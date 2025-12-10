@@ -1,0 +1,65 @@
+// apps/app-core/src/user/user.controller.ts
+import { 
+  Controller, 
+  Get, 
+  Put, 
+  Body, 
+  UseGuards, 
+  Request,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  ParseIntPipe,
+  Delete,
+  HttpCode,
+  HttpStatus
+} from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { UserService } from './user.service';
+
+@UseGuards(JwtAuthGuard)
+@Controller('user')
+export class UserController {
+  constructor(private readonly userService: UserService) {}
+
+  @Get('profile')
+  async getProfile(@Request() req: any) {
+    return this.userService.getProfile(req.user.tenantId, req.user.id);
+  }
+
+  @Put('profile')
+  async updateProfile(
+    @Request() req: any,
+    @Body() updateData: { email?: string; name?: string; avatar?: string }
+  ) {
+    return this.userService.updateProfile(req.user.tenantId, req.user.id, updateData);
+  }
+
+  @Get('list')
+  async getUsers(
+    @Request() req: any,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 50;
+    return this.userService.getUsersByTenant(req.user.tenantId, pageNum, limitNum);
+  }
+
+  @Get(':id')
+  async getUserById(
+    @Request() req: any,
+    @Param('id', ParseUUIDPipe) userId: string
+  ) {
+    return this.userService.getUserById(req.user.tenantId, userId);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deactivateUser(
+    @Request() req: any,
+    @Param('id', ParseUUIDPipe) userId: string
+  ) {
+    return this.userService.deactivateUser(req.user.tenantId, userId, req.user.id);
+  }
+}

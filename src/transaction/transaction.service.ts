@@ -1,0 +1,301 @@
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { Prisma, TransactionStatus } from '@prisma/client';
+
+@Injectable()
+export class TransactionService {
+  constructor(private prisma: PrismaService) {}
+
+  /**
+   * Get tenant balance summary
+   */
+  async getTenantBalance(tenantId: string) {
+    const transactions = await this.prisma.transaction.findMany({
+      where: { tenantId },
+      select: {
+        amount: true,
+        platformFee: true,
+        merchantEarnings: true,
+        status: true,
+      },
+    });
+
+    const totalRevenue = transactions
+      .filter((t) => t.status === 'COMPLETED')
+      .reduce((sum, t) => sum + Number(t.amount), 0);
+
+    const totalPlatformFees = transactions
+      .filter((t) => t.status === 'COMPLETED')
+      .reduce((sum, t) => sum + Number(t.platformFee), 0);
+
+    const totalEarnings = transactions
+      .filter((t) => t.status === 'COMPLETED')
+      .reduce((sum, t) => sum + Number(t.merchantEarnings), 0);
+
+    const pendingAmount = transactions
+      .filter((t) => t.status === 'PENDING' || t.status === 'PROCESSING')
+      .reduce((sum, t) => sum + Number(t.merchantEarnings), 0);
+
+    return {
+      totalRevenue,
+      totalPlatformFees,
+      totalEarnings,
+      pendingAmount,
+      availableBalance: totalEarnings,
+      currency: 'SAR',
+    };
+  }
+
+  /**
+   * Get all transactions for a tenant with filters
+   */
+  async getTransactions(
+    tenantId: string,
+    filters?: {
+      status?: TransactionStatus;
+      startDate?: Date;
+      endDate?: Date;
+      limit?: number;
+      offset?: number;
+    },
+  ) {
+    const where: Prisma.TransactionWhereInput = {
+      tenantId,
+      ...(filters?.status && { status: filters.status }),
+      ...(filters?.startDate &&
+        filters?.endDate && {
+          createdAt: {
+            gte: filters.startDate,
+            lte: filters.endDate,
+          },
+        }),
+    };
+
+    const [transactions, total] = await Promise.all([
+      this.prisma.transaction.findMany({
+        where,
+        include: {
+          order: {
+            select: {
+              orderNumber: true,
+              customerName: true,
+              customerEmail: true,
+              orderItems: {
+                select: {
+                  productName: true,
+                  quantity: true,
+                  price: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: filters?.limit || 50,
+        skip: filters?.offset || 0,
+      }),
+      this.prisma.transaction.count({ where }),
+    ]);
+
+    return {
+      transactions: transactions.map((t) => ({
+        id: t.id,
+        orderNumber: t.orderNumber || t.order?.orderNumber,
+        amount: Number(t.amount),
+        platformFee: Number(t.platformFee),
+        merchantEarnings: Number(t.merchantEarnings),
+        currency: t.currency,
+        status: t.status,
+        paymentProvider: t.paymentProvider,
+        paymentMethodType: t.paymentMethodType,
+        customerEmail: t.customerEmail || t.order?.customerEmail,
+        customerName: t.customerName || t.order?.customerName,
+        description: t.description,
+        orderItems: t.order?.orderItems || [],
+        processedAt: t.processedAt,
+        settledAt: t.settledAt,
+        createdAt: t.createdAt,
+      })),
+      total,
+      limit: filters?.limit || 50,
+      offset: filters?.offset || 0,
+    };
+  }
+
+  /**
+   * Get transaction by ID
+   */
+  async getTransactionById(tenantId: string, transactionId: string) {
+    const transaction = await this.prisma.transaction.findFirst({
+      where: {
+        id: transactionId,
+        tenantId,
+      },
+      include: {
+        order: {
+          include: {
+            orderItems: {
+              include: {
+                product: {
+                  select: {
+                    name: true,
+                    images: {
+                      take: 1,
+                      select: { url: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!transaction) {
+      throw new Error('Transaction not found');
+    }
+
+    return {
+      ...transaction,
+      amount: Number(transaction.amount),
+      platformFee: Number(transaction.platformFee),
+      merchantEarnings: Number(transaction.merchantEarnings),
+    };
+  }
+
+  /**
+   * Get transaction statistics
+   */
+  async getTransactionStats(
+    tenantId: string,
+    startDate?: Date,
+    endDate?: Date,
+  ) {
+    const where: Prisma.TransactionWhereInput = {
+      tenantId,
+      status: 'COMPLETED',
+      ...(startDate &&
+        endDate && {
+          createdAt: {
+            gte: startDate,
+            lte: endDate,
+          },
+        }),
+    };
+
+    const transactions = await this.prisma.transaction.findMany({
+      where,
+      select: {
+        amount: true,
+        platformFee: true,
+        merchantEarnings: true,
+        paymentProvider: true,
+        createdAt: true,
+      },
+    });
+
+    // Group by payment provider
+    const byProvider = transactions.reduce(
+      (acc, t) => {
+        const provider = t.paymentProvider;
+        if (!acc[provider]) {
+          acc[provider] = { count: 0, amount: 0 };
+        }
+        acc[provider].count++;
+        acc[provider].amount += Number(t.amount);
+        return acc;
+      },
+      {} as Record<string, { count: number; amount: number }>,
+    );
+
+    // Group by date
+    const byDate = transactions.reduce(
+      (acc, t) => {
+        const date = t.createdAt.toISOString().split('T')[0];
+        if (!acc[date]) {
+          acc[date] = { count: 0, amount: 0, fees: 0, earnings: 0 };
+        }
+        acc[date].count++;
+        acc[date].amount += Number(t.amount);
+        acc[date].fees += Number(t.platformFee);
+        acc[date].earnings += Number(t.merchantEarnings);
+        return acc;
+      },
+      {} as Record<
+        string,
+        { count: number; amount: number; fees: number; earnings: number }
+      >,
+    );
+
+    return {
+      totalTransactions: transactions.length,
+      totalAmount: transactions.reduce(
+        (sum, t) => sum + Number(t.amount),
+        0,
+      ),
+      totalFees: transactions.reduce(
+        (sum, t) => sum + Number(t.platformFee),
+        0,
+      ),
+      totalEarnings: transactions.reduce(
+        (sum, t) => sum + Number(t.merchantEarnings),
+        0,
+      ),
+      byProvider,
+      byDate: Object.entries(byDate).map(([date, data]) => ({
+        date,
+        ...data,
+      })),
+    };
+  }
+
+  /**
+   * Get subscription info for tenant
+   */
+  async getSubscriptionInfo(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        plan: true,
+        createdAt: true,
+        settings: true,
+      },
+    });
+
+    if (!tenant) {
+      throw new Error('Tenant not found');
+    }
+
+    // Calculate next billing date (assuming monthly billing)
+    const nextBillingDate = new Date(tenant.createdAt);
+    const today = new Date();
+    
+    while (nextBillingDate < today) {
+      nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+    }
+
+    const daysUntilBilling = Math.ceil(
+      (nextBillingDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+    );
+
+    // Plan pricing
+    const planPricing = {
+      STARTER: { monthly: 99, features: ['Up to 100 products', 'Basic analytics', 'Email support'] },
+      PROFESSIONAL: { monthly: 299, features: ['Unlimited products', 'Advanced analytics', 'Priority support', 'Custom domain'] },
+      ENTERPRISE: { monthly: 999, features: ['Everything in Pro', 'Dedicated account manager', 'Custom integrations', 'SLA'] },
+    };
+
+    const currentPlan = planPricing[tenant.plan];
+
+    return {
+      plan: tenant.plan,
+      monthlyPrice: currentPlan.monthly,
+      features: currentPlan.features,
+      nextBillingDate,
+      daysUntilBilling,
+      shouldAlert: daysUntilBilling <= 7,
+      billingHistory: [], // TODO: Implement billing history
+    };
+  }
+}

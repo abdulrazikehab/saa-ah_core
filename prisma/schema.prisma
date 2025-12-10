@@ -1,0 +1,1002 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id                 String              @id @default(cuid())
+  name               String
+  subdomain          String              @unique
+  plan               PlanType            @default(STARTER)
+  status             Status              @default(ACTIVE)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  settings           Json?
+  description        String?
+  templateId         String?
+  carts              Cart[]
+  categories         Category[]
+  coupons            Coupon[]
+  customDomains      CustomDomain[]
+  orders             Order[]
+  pages              Page[]
+  paymentMethods     PaymentMethod[]
+  plugins            Plugin[]
+  productCollections ProductCollection[]
+  productTags        ProductTag[]
+  products           Product[]
+  shippingZones      ShippingZone[]
+  siteConfig         SiteConfig?
+  sslCertificates    SSLCertificate[]
+  taxRates           TaxRate[]
+  themes             Theme[]
+  users              User[]
+  webhookEndpoints   WebhookEndpoint[]
+  transactions       Transaction[]
+  activityLogs       ActivityLog[]     @relation("ActivityLogs")
+  chatMessages       ChatMessage[]     @relation("ChatMessages")
+  featureFlags       FeatureFlag[]
+  integrations       Integration[]
+  userGifts          UserGift[]
+  securityEvents     SecurityEvent[]
+
+  @@map("tenants")
+}
+
+model Product {
+  id              String                  @id @default(cuid())
+  tenantId        String
+  name            String
+  description     String?
+  sku             String?                 @unique
+  price           Decimal
+  compareAtPrice  Decimal?
+  costPerItem     Decimal?
+  isAvailable     Boolean                 @default(true)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  isPublished     Boolean                 @default(true)
+  seoDescription  String?
+  seoTitle        String?
+  nameAr          String?
+  descriptionAr   String?
+  barcode         String?
+  featured        Boolean                 @default(false)
+  weight          Decimal?
+  dimensions      String?
+  cartItems       CartItem[]
+  orderItems      OrderItem[]
+  categories      ProductCategory[]
+  collectionItems ProductCollectionItem[]
+  images          ProductImage[]
+  tagItems        ProductTagItem[]
+  variants        ProductVariant[]
+  tenant          Tenant                  @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([isAvailable, isPublished])
+  @@index([createdAt])
+  @@map("products")
+}
+
+model ProductVariant {
+  id                String      @id @default(cuid())
+  productId         String
+  name              String
+  sku               String?     @unique
+  price             Decimal
+  compareAtPrice    Decimal?
+  inventoryQuantity Int         @default(0)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  trackInventory    Boolean     @default(true)
+  weight            Decimal?
+  cartItems         CartItem[]
+  orderItems        OrderItem[]
+  product           Product     @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@index([sku])
+  @@map("product_variants")
+}
+
+model Category {
+  id          String            @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  slug        String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  image       String?
+  isActive    Boolean           @default(true)
+  tenant      Tenant            @relation(fields: [tenantId], references: [id])
+  products    ProductCategory[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@index([isActive])
+  @@map("categories")
+}
+
+model ProductCategory {
+  id         String   @id @default(cuid())
+  productId  String
+  categoryId String
+  sortOrder  Int      @default(0)
+  category   Category @relation(fields: [categoryId], references: [id])
+  product    Product  @relation(fields: [productId], references: [id])
+
+  @@unique([productId, categoryId])
+  @@map("product_categories")
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String
+  url       String
+  altText   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+model ProductCollection {
+  id          String                  @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  slug        String
+  image       String?
+  isActive    Boolean                 @default(true)
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  products    ProductCollectionItem[]
+  tenant      Tenant                  @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("product_collections")
+}
+
+model ProductCollectionItem {
+  id           String            @id @default(cuid())
+  collectionId String
+  productId    String
+  sortOrder    Int               @default(0)
+  collection   ProductCollection @relation(fields: [collectionId], references: [id])
+  product      Product           @relation(fields: [productId], references: [id])
+
+  @@unique([collectionId, productId])
+  @@map("product_collection_items")
+}
+
+model ProductTag {
+  id        String           @id @default(cuid())
+  tenantId  String
+  name      String
+  slug      String
+  createdAt DateTime         @default(now())
+  products  ProductTagItem[]
+  tenant    Tenant           @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, slug])
+  @@map("product_tags")
+}
+
+model ProductTagItem {
+  id        String     @id @default(cuid())
+  productId String
+  tagId     String
+  product   Product    @relation(fields: [productId], references: [id])
+  tag       ProductTag @relation(fields: [tagId], references: [id])
+
+  @@unique([productId, tagId])
+  @@map("product_tag_items")
+}
+
+model Cart {
+  id         String     @id @default(cuid())
+  tenantId   String
+  sessionId  String?
+  userId     String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  couponCode String?
+  cartItems  CartItem[]
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([sessionId])
+  @@index([userId])
+  @@map("carts")
+}
+
+model CartItem {
+  id               String          @id @default(cuid())
+  cartId           String
+  productId        String
+  productVariantId String?
+  quantity         Int             @default(1)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  cart             Cart            @relation(fields: [cartId], references: [id])
+  product          Product         @relation(fields: [productId], references: [id])
+  productVariant   ProductVariant? @relation(fields: [productVariantId], references: [id])
+
+  @@unique([cartId, productId, productVariantId])
+  @@index([cartId])
+  @@map("cart_items")
+}
+
+model Order {
+  id                String             @id @default(cuid())
+  tenantId          String
+  orderNumber       String             @unique
+  customerEmail     String
+  totalAmount       Decimal
+  status            OrderStatus        @default(PENDING)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  billingAddress    Json?
+  customerName      String?
+  shippingAddress   Json?
+  cancelledAt       DateTime?
+  customerPhone     String?
+  deliveredAt       DateTime?
+  discountAmount    Decimal            @default(0)
+  paidAt            DateTime?
+  paymentMethodId   String?
+  paymentStatus     PaymentStatus      @default(PENDING)
+  shippedAt         DateTime?
+  shippingAmount    Decimal            @default(0)
+  shippingMethodId  String?
+  shippingStatus    ShippingStatus     @default(UNFULFILLED)
+  subtotalAmount    Decimal
+  taxAmount         Decimal            @default(0)
+  trackingNumber    String?
+  transactionId     String?
+  ipAddress         String?
+  couponRedemptions CouponRedemption[]
+  orderItems        OrderItem[]
+  paymentMethod     PaymentMethod?     @relation(fields: [paymentMethodId], references: [id])
+  shippingMethod    ShippingMethod?    @relation(fields: [shippingMethodId], references: [id])
+  tenant            Tenant             @relation(fields: [tenantId], references: [id])
+  transactions      Transaction[]
+
+  @@index([tenantId])
+  @@index([customerEmail])
+  @@index([status, paymentStatus])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id               String          @id @default(cuid())
+  orderId          String
+  productId        String
+  productVariantId String?
+  quantity         Int
+  price            Decimal
+  productName      String
+  variantName      String?
+  sku              String?
+  order            Order           @relation(fields: [orderId], references: [id])
+  product          Product         @relation(fields: [productId], references: [id])
+  productVariant   ProductVariant? @relation(fields: [productVariantId], references: [id])
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model Coupon {
+  id            String             @id @default(cuid())
+  tenantId      String
+  code          String             @unique
+  type          CouponType         @default(PERCENTAGE)
+  value         Decimal
+  minimumAmount Decimal?
+  usageLimit    Int?
+  usedCount     Int                @default(0)
+  validFrom     DateTime?
+  validUntil    DateTime?
+  isActive      Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  redemptions   CouponRedemption[]
+  tenant        Tenant             @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, code])
+  @@index([isActive, validFrom, validUntil])
+  @@map("coupons")
+}
+
+model CouponRedemption {
+  id             String   @id @default(cuid())
+  couponId       String
+  orderId        String
+  customerEmail  String
+  discountAmount Decimal
+  redeemedAt     DateTime @default(now())
+  coupon         Coupon   @relation(fields: [couponId], references: [id])
+  order          Order    @relation(fields: [orderId], references: [id])
+
+  @@unique([couponId, orderId])
+  @@map("coupon_redemptions")
+}
+
+model ShippingZone {
+  id        String           @id @default(cuid())
+  tenantId  String
+  name      String
+  countries String[]
+  isActive  Boolean          @default(true)
+  createdAt DateTime         @default(now())
+  methods   ShippingMethod[]
+  tenant    Tenant           @relation(fields: [tenantId], references: [id])
+
+  @@map("shipping_zones")
+}
+
+model ShippingMethod {
+  id            String       @id @default(cuid())
+  zoneId        String
+  name          String
+  type          ShippingType @default(FLAT_RATE)
+  price         Decimal
+  minimumAmount Decimal?
+  estimatedDays Int?
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  orders        Order[]
+  zone          ShippingZone @relation(fields: [zoneId], references: [id])
+
+  @@map("shipping_methods")
+}
+
+model TaxRate {
+  id        String   @id @default(cuid())
+  tenantId  String
+  country   String
+  state     String?
+  rate      Decimal
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, country, state])
+  @@map("tax_rates")
+}
+
+model PaymentMethod {
+  id          String          @id @default(cuid())
+  tenantId    String
+  provider    PaymentProvider @default(HYPERPAY)
+  name        String
+  isActive    Boolean         @default(true)
+  credentials Json?
+  settings    Json?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  orders      Order[]
+  tenant      Tenant          @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, provider])
+  @@map("payment_methods")
+}
+
+model Transaction {
+  id                String            @id @default(cuid())
+  tenantId          String
+  orderId           String?
+  orderNumber       String?
+  amount            Decimal           // Total transaction amount
+  platformFee       Decimal           @default(0) // Platform commission
+  merchantEarnings  Decimal           // Amount merchant receives (amount - platformFee)
+  currency          String            @default("USD")
+  status            TransactionStatus @default(PENDING)
+  paymentProvider   PaymentProvider
+  paymentMethodType String?           // e.g., "credit_card", "debit_card", "wallet"
+  transactionId     String?           // External payment gateway transaction ID
+  customerEmail     String?
+  customerName      String?
+  description       String?
+  metadata          Json?             // Additional payment details
+  processedAt       DateTime?
+  settledAt         DateTime?         // When funds were settled to merchant
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  tenant            Tenant            @relation(fields: [tenantId], references: [id])
+  order             Order?            @relation(fields: [orderId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([orderId])
+  @@index([customerEmail])
+  @@index([createdAt])
+  @@map("transactions")
+}
+
+model CustomDomain {
+  id              String           @id @default(cuid())
+  tenantId        String
+  domain          String           @unique
+  status          DomainStatus     @default(PENDING)
+  sslStatus       SSLStatus        @default(PENDING)
+  verifiedAt      DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  sslCertificates SSLCertificate[]
+
+  @@index([tenantId])
+  @@index([domain])
+  @@map("custom_domains")
+}
+
+model SSLCertificate {
+  id          String       @id @default(cuid())
+  domainId    String
+  certificate String?
+  privateKey  String?
+  issuer      String?
+  expiresAt   DateTime?
+  autoRenew   Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  tenantId    String?
+  domain      CustomDomain @relation(fields: [domainId], references: [id])
+  Tenant      Tenant?      @relation(fields: [tenantId], references: [id])
+
+  @@index([expiresAt])
+  @@map("ssl_certificates")
+}
+
+model WebhookEndpoint {
+  id                String            @id @default(cuid())
+  tenantId          String
+  url               String
+  events            String[]
+  secret            String
+  isActive          Boolean           @default(true)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  webhookDeliveries WebhookDelivery[]
+  tenant            Tenant            @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("webhook_endpoints")
+}
+
+model WebhookDelivery {
+  id           String          @id @default(cuid())
+  endpointId   String
+  event        String
+  payload      Json
+  responseCode Int?
+  responseBody String?
+  attempts     Int             @default(1)
+  deliveredAt  DateTime?
+  createdAt    DateTime        @default(now())
+  endpoint     WebhookEndpoint @relation(fields: [endpointId], references: [id])
+
+  @@index([endpointId, event])
+  @@index([createdAt])
+  @@map("webhook_deliveries")
+}
+
+model Theme {
+  id            String         @id @default(cuid())
+  tenantId      String
+  name          String
+  description   String?
+  version       String         @default("1.0.0")
+  isActive      Boolean        @default(false)
+  isInstalled   Boolean        @default(true)
+  settings      Json?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  draftSettings Json?
+  versions      ThemeVersion[]
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("themes")
+}
+
+model ThemeVersion {
+  id        String   @id @default(cuid())
+  themeId   String
+  version   String
+  sourceUrl String?
+  settings  Json?
+  createdAt DateTime @default(now())
+  theme     Theme    @relation(fields: [themeId], references: [id], onDelete: Cascade)
+
+  @@unique([themeId, version])
+  @@map("theme_versions")
+}
+
+model Plugin {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  version     String
+  isActive    Boolean  @default(false)
+  settings    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("plugins")
+}
+
+model Page {
+  id           String        @id @default(cuid())
+  tenantId     String
+  title        String
+  slug         String
+  content      Json?
+  isPublished  Boolean       @default(false)
+  seoTitle     String?
+  seoDesc      String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  draftContent Json?
+  history      PageHistory[]
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("pages")
+}
+
+model PageHistory {
+  id        String   @id @default(cuid())
+  pageId    String
+  content   Json
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  createdBy String?
+  page      Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([pageId])
+  @@map("page_history")
+}
+
+model Template {
+  id          String   @id @default(cuid())
+  name        String
+  category    String
+  description String?
+  thumbnail   String?
+  content     Json
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([isDefault])
+  @@map("templates")
+}
+
+model SiteConfig {
+  tenantId       String   @id
+  header         Json
+  footer         Json
+  background     Json
+  language       String   @default("en")
+  theme          String   @default("light")
+  paymentMethods String[]
+  hyperpayConfig Json?
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@map("site_configs")
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  password     String
+  name         String?
+  role         UserRole      @default(SHOP_OWNER)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  tenantId     String?
+  avatar       String?
+  recoveryId   String?       @unique // Secret recovery ID for account recovery
+  tenant       Tenant?       @relation(fields: [tenantId], references: [id])
+  sentMessages ChatMessage[] @relation("SentMessages")
+  gifts        UserGift[]
+  securityEvents SecurityEvent[]
+
+  @@index([tenantId])
+  @@map("users")
+}
+
+model ActivityLog {
+  id          String   @id @default(cuid())
+  tenantId    String
+  actorId     String
+  targetId    String?
+  action      String
+  details     Json?
+  createdAt   DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], name: "ActivityLogs")
+
+  @@index([tenantId, createdAt])
+  @@map("activity_logs")
+}
+
+model ChatMessage {
+  id          String   @id @default(cuid())
+  tenantId    String
+  senderId    String
+  content     String
+  createdAt   DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], name: "ChatMessages")
+  sender      User     @relation(fields: [senderId], references: [id], name: "SentMessages")
+
+  @@index([tenantId, createdAt])
+  @@map("chat_messages")
+}
+
+
+enum TransactionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+
+
+
+
+enum PlanType {
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum Status {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum ShippingStatus {
+  UNFULFILLED
+  PARTIALLY_FULFILLED
+  FULFILLED
+}
+
+enum DomainStatus {
+  PENDING
+  ACTIVE
+  VERIFICATION_FAILED
+  SUSPENDED
+}
+
+enum SSLStatus {
+  PENDING
+  ACTIVE
+  FAILED
+  EXPIRED
+}
+
+enum CouponType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FREE_SHIPPING
+}
+
+enum ShippingType {
+  FLAT_RATE
+  FREE
+  REAL_TIME
+}
+
+enum PaymentProvider {
+  HYPERPAY
+  STRIPE
+  PAYPAL
+  CASH_ON_DELIVERY
+  NEOLEAP
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  SHOP_OWNER
+  STAFF
+  CUSTOMER
+}
+
+enum CommissionType {
+  PERCENTAGE
+  FIXED
+}
+
+enum IntegrationType {
+  ANALYTICS
+  SHIPPING
+  EMAIL
+  SMS
+  PAYMENT
+  SOCIAL
+  ACCOUNTING
+}
+
+// Feature Flags - Control features per tenant or globally
+model FeatureFlag {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  feature     String   // e.g., "chat", "ai_assistant", "page_builder"
+  enabled     Boolean  @default(true)
+  config      Json?    // Feature-specific configuration
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@unique([tenantId, feature])
+  @@index([feature])
+  @@map("feature_flags")
+}
+
+// Payment Plans - Installment payment configurations
+model PaymentPlan {
+  id              String   @id @default(cuid())
+  name            String
+  nameAr          String?
+  description     String?
+  installments    Int      // Number of installments
+  interestRate    Decimal  @default(0) // Interest rate percentage
+  minAmount       Decimal? // Minimum order amount
+  maxAmount       Decimal? // Maximum order amount
+  isActive        Boolean  @default(true)
+  allowedTenants  String[] // Empty = all tenants
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("payment_plans")
+}
+
+// Platform Configuration - Global platform settings
+model PlatformConfig {
+  id                    String   @id @default(cuid())
+  key                   String   @unique
+  value                 Json
+  description           String?
+  category              String   // e.g., "payment", "features", "limits"
+  isEditable            Boolean  @default(true)
+  updatedAt             DateTime @updatedAt
+  updatedBy             String?
+  
+  @@index([category])
+  @@map("platform_configs")
+}
+
+// Platform Features - Global feature definitions and plan requirements
+model PlatformFeature {
+  id            String   @id @default(cuid())
+  feature       String   @unique // key
+  displayName   String
+  displayNameAr String?
+  description   String?
+  category      String
+  requiredPlan  PlanType @default(STARTER)
+  isGlobal      Boolean  @default(true)
+  isEnabled     Boolean  @default(true)
+  config        Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("platform_features")
+}
+
+// User Gifts - Gifts and rewards for users/tenants
+model UserGift {
+  id          String   @id @default(cuid())
+  userId      String?
+  tenantId    String?
+  giftType    GiftType
+  giftValue   String
+  giftDetails Json?
+  status      GiftStatus @default(ACTIVE)
+  expiresAt   DateTime?
+  grantedBy   String
+  grantedAt   DateTime @default(now())
+  message     String?
+  
+  user        User?    @relation(fields: [userId], references: [id])
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+
+  @@map("user_gifts")
+}
+
+// Subscription Plans - Plan configurations
+model SubscriptionPlan {
+  id            String   @id @default(cuid())
+  code          String   @unique // e.g. STARTER, PROFESSIONAL
+  name          String
+  nameAr        String?
+  description   String?
+  descriptionAr String?
+  price         Decimal
+  currency      String   @default("SAR")
+  billingCycle  String   @default("MONTHLY") // MONTHLY, YEARLY
+  features      String[]
+  featuresAr    String[]
+  limits        Json?    // { products: 100, staff: 2 }
+  isActive      Boolean  @default(true)
+  isPopular     Boolean  @default(false)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("subscription_plans")
+}
+
+enum GiftType {
+  PLAN_UPGRADE
+  FEATURE_ACCESS
+  CREDIT
+  EXTENSION
+  TRIAL
+}
+
+enum GiftStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+  USED
+}
+
+// Integrations - Third-party service integrations
+model Integration {
+  id          String          @id @default(cuid())
+  tenantId    String?
+  name        String
+  type        IntegrationType
+  provider    String          // e.g., "google_analytics", "mailchimp", "twilio"
+  credentials Json            // Encrypted credentials
+  settings    Json?
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  
+  tenant      Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@index([tenantId, type])
+  @@map("integrations")
+}
+
+// Partner - Business partners with commission structure
+model Partner {
+  id                String         @id @default(cuid())
+  name              String
+  nameAr            String?
+  email             String         @unique
+  phone             String?
+  commissionType    CommissionType @default(PERCENTAGE)
+  commissionValue   Decimal
+  isActive          Boolean        @default(true)
+  allowedFeatures   String[]
+  settings          Json?
+  aiScript          String?        @db.Text // Custom AI training script/context
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  
+  @@map("partners")
+}
+
+// Audit Log - Track all master dashboard actions
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String
+  userRole    UserRole
+  action      String   // e.g., "TENANT_CREATED", "GATEWAY_ENABLED"
+  resource    String   // e.g., "Tenant", "PaymentGateway"
+  resourceId  String?
+  changes     Json?    // Before/after values
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+model SecurityEvent {
+  id          String            @id @default(cuid())
+  type        SecurityEventType
+  severity    SecuritySeverity
+  userId      String?
+  tenantId    String?
+  ipAddress   String?
+  userAgent   String?
+  description String
+  metadata    Json?             // Changed from String to Json for easier access in core
+  // Geolocation fields
+  country     String?
+  countryCode String?
+  city        String?
+  region      String?
+  latitude    Float?
+  longitude   Float?
+  isp         String?
+  isVpn       Boolean           @default(false)
+  isProxy     Boolean           @default(false)
+  // Device info fields
+  os          String?
+  browser     String?
+  device      String?
+  createdAt   DateTime          @default(now())
+  tenant      Tenant?           @relation(fields: [tenantId], references: [id])
+  user        User?             @relation(fields: [userId], references: [id])
+
+  @@index([type, severity])
+  @@index([createdAt])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("security_events")
+}
+
+enum SecurityEventType {
+  SUCCESSFUL_LOGIN
+  FAILED_LOGIN_ATTEMPT
+  SUSPICIOUS_LOGIN
+  BRUTE_FORCE_ATTEMPT
+  FRAUD_ATTEMPT
+  RATE_LIMIT_EXCEEDED
+  UNUSUAL_ACTIVITY
+  SECURITY_BREACH
+  ACCOUNT_LOCKED
+  PASSWORD_RESET_ATTEMPT
+  INVALID_RESET_CODE
+  INVALID_REFRESH_TOKEN
+  DEVICE_FINGERPRINT
+  VM_DETECTED
+  HIGH_RISK_DEVICE
+  MULTIPLE_ACCOUNTS_ON_DEVICE
+}
+
+enum SecuritySeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+
+

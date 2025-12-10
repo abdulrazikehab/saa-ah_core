@@ -1,0 +1,138 @@
+import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { TenantModule } from './tenant/tenant.module';
+import { TenantMiddleware } from './tenant/tenant.middleware';
+import { UserModule } from './user/user.module';
+import { ProductModule } from './product/product.module';
+import { OrderModule } from './order/order.module';
+import { PaymentModule } from './payment/payment.module';
+import { TemplateModule } from './template/template.module';
+import { PrismaModule } from './prisma/prisma.module';
+import { AuthModule } from './auth/auth.module';
+import { CategoryModule } from './category/category.module';
+import { DomainModule } from './domain/domain.module';
+import { CartModule } from './cart/cart.module';
+import { CheckoutModule } from './checkout/checkout.module';
+import { CollectionModule } from './collection/collection.module';
+import { CloudinaryModule } from './cloudinary/cloudinary.module';
+import { UploadModule } from './upload/upload.module';
+import { RedisModule } from './redis/redis.module';
+import { FraudModule } from './fraud/fraud.module';
+import { FraudGuardMiddleware } from './fraud/fraud-guard.middleware';
+import { securityConfig } from './config/security.config';
+import { SeoModule } from './seo/seo.module';
+import { ShippingModule } from './shipping/shipping.module';
+import { TaxModule } from './tax/tax.module';
+import { EventsModule } from './events/events.module';
+import { WebhookModule } from './webhook/webhook.module';
+import { AnalyticsModule } from './analytics/analytics.module';
+import { JobsModule } from './jobs/jobs.module';
+import { PluginModule } from './plugin/plugin.module';
+import { ThemeModule } from './theme/theme.module';
+import { CouponModule } from './coupon/coupon.module';
+import { PageModule } from './page/page.module';
+import { AiModule } from './ai/ai.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { SiteConfigModule } from './site-config/site-config.module';
+import { SuperAdminGuard } from './guard/super-admin.guard';
+import { AdminController } from './admin/admin.controller';
+import { TransactionModule } from './transaction/transaction.module';
+import { ActivityLogModule } from './activity-log/activity-log.module';
+import { ChatModule } from './chat/chat.module';
+import { ReportModule } from './report/report.module';
+import { PartnerModule } from './partner/partner.module';
+import { MasterAdminModule } from './admin/master-admin.module';
+import { PublicModule } from './public/public.module';
+
+@Module({
+  // Main Application Module
+  imports: [
+    // Global configuration - updated to include root .env
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env', '../../.env'],
+    }),
+    // Rate Limiting
+    ThrottlerModule.forRoot([{
+      ttl: securityConfig.rateLimit.ttl,
+      limit: securityConfig.rateLimit.limit,
+    }]),
+    PrismaModule,
+    // Global JWT module
+    JwtModule.registerAsync({
+      global: true,
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'),
+        signOptions: { expiresIn: '15m' },
+      }),
+      inject: [ConfigService],
+    }),
+    // Feature modules
+    AuthModule,
+    TenantModule,
+    UserModule,
+    ProductModule,
+    OrderModule,
+    PaymentModule,
+    TemplateModule,
+    CategoryModule,
+    DomainModule,
+    CartModule,
+    CheckoutModule,
+    CollectionModule,
+    CloudinaryModule,   
+    UploadModule,      
+    RedisModule,
+    FraudModule,
+    SeoModule,
+    ShippingModule,
+    TaxModule,
+    EventsModule,
+    WebhookModule,
+    AnalyticsModule,
+    JobsModule,
+    PluginModule, 
+    ThemeModule,
+    CouponModule, 
+    PageModule,
+    AiModule,
+    DashboardModule,
+    SiteConfigModule,
+    TransactionModule,
+    ActivityLogModule,
+    ChatModule,
+    ReportModule,
+    PartnerModule,
+    MasterAdminModule,
+    PublicModule,
+  ],
+  controllers: [AdminController],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_FILTER,
+      useClass: AllExceptionsFilter,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TransformInterceptor,
+    },
+  ],
+})
+export class AppModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(TenantMiddleware).forRoutes('*');
+    consumer
+      .apply(FraudGuardMiddleware)
+      .forRoutes({ path: 'checkout/*', method: RequestMethod.POST }); // Apply only to checkout POST routes
+  }
+}
