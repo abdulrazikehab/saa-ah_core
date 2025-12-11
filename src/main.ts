@@ -13,13 +13,13 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  
+
   // Increase body limit for image uploads
   app.use(json({ limit: '50mb' }));
   app.use(urlencoded({ extended: true, limit: '50mb' }));
 
   app.setGlobalPrefix('api');
-  
+
   // Verify JWT secret is loaded
   if (!process.env.JWT_SECRET) {
     console.error('❌ JWT_SECRET is not configured in environment variables');
@@ -31,7 +31,7 @@ async function bootstrap() {
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
-      
+
       // List of allowed origins
       const allowedOrigins = [
         'http://localhost:4173',
@@ -43,20 +43,22 @@ async function bootstrap() {
         'http://192.168.0.108:4173',
         'http://192.168.0.108:8080',
         process.env.FRONTEND_URL,
+        'https://saeaa.com',
+        'https://www.saeaa.com'
       ].filter(Boolean);
-      
+
       // Check if origin is in allowed list
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
-      
+
       // Allow any subdomain of localhost (e.g., mystore.localhost:8080)
       if (origin.match(/^http:\/\/[\w-]+\.localhost(:\d+)?$/)) {
         return callback(null, true);
       }
-      
-      // Allow any subdomain of blackbox.com
-      if (origin.match(/^https?:\/\/[\w-]+\.saa'ah\.com$/)) {
+
+      // Allow any subdomain of saeaa.com
+      if (origin.match(/^https?:\/\/[\w-]+\.saeaa\.com$/)) {
         return callback(null, true);
       }
 
@@ -64,7 +66,7 @@ async function bootstrap() {
       if (origin.match(/^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/)) {
         return callback(null, true);
       }
-      
+
       // Reject other origins
       callback(new Error('Not allowed by CORS'));
     },
@@ -95,7 +97,7 @@ async function bootstrap() {
     transform: true,
     forbidNonWhitelisted: true,
   }));
-  
+
   // Add global filter to log validation errors
   const { ValidationExceptionFilter } = await import('./common/filters/validation-exception.filter');
   app.useGlobalFilters(new ValidationExceptionFilter());
