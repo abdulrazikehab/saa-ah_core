@@ -37,37 +37,66 @@ export class CategoryController {
     @Request() req: any,
     @Headers('x-tenant-id') tenantIdHeader: string
   ) {
-    console.log('[CategoryController] getCategories called');
-    console.log('[CategoryController] req.user:', req.user);
-    console.log('[CategoryController] req.tenantId:', req.tenantId);
-    console.log('[CategoryController] tenantIdHeader:', tenantIdHeader);
-    
-    const tenantId = req.tenantId || tenantIdHeader || process.env.DEFAULT_TENANT_ID || 'default';
-    console.log('[CategoryController] Final tenantId used:', tenantId);
+    try {
+      const tenantId = req.tenantId || tenantIdHeader || process.env.DEFAULT_TENANT_ID || 'default';
 
-    const categories = await this.prisma.category.findMany({
-      where: { tenantId },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        description: true,
-        createdAt: true,
-        updatedAt: true,
-        _count: {
-          select: { products: true }
-        }
-      },
-      orderBy: { name: 'asc' },
-    });
-    
-    // Map to include productCount for frontend
-    const mappedCategories = categories.map((c: any) => ({
-      ...c,
-      productCount: c._count.products
-    }));
-    
-    return { categories: mappedCategories };
+      const categories = await this.prisma.category.findMany({
+        where: { tenantId },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          description: true,
+          image: true,
+          createdAt: true,
+          updatedAt: true,
+          parentId: true,
+          _count: {
+            select: { products: true }
+          }
+        },
+        orderBy: { name: 'asc' },
+      });
+      
+      // Map to include productCount for frontend
+      const mappedCategories = categories.map((c: any) => ({
+        ...c,
+        productCount: c._count.products
+      }));
+      
+      return { categories: mappedCategories };
+    } catch (error: any) {
+      console.error('Error in getCategories:', error);
+      // If parentId column doesn't exist, try without it
+      if (error.message?.includes('parentId') || error.code === 'P2001') {
+        const tenantId = req.tenantId || tenantIdHeader || process.env.DEFAULT_TENANT_ID || 'default';
+        const categories = await this.prisma.category.findMany({
+          where: { tenantId },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            description: true,
+            image: true,
+            createdAt: true,
+            updatedAt: true,
+            _count: {
+              select: { products: true }
+            }
+          },
+          orderBy: { name: 'asc' },
+        });
+        
+        const mappedCategories = categories.map((c: any) => ({
+          ...c,
+          productCount: c._count.products,
+          parentId: null
+        }));
+        
+        return { categories: mappedCategories };
+      }
+      throw error;
+    }
   }
 
   @Post()
@@ -90,14 +119,57 @@ export class CategoryController {
       throw new BadRequestException('Category with this slug already exists');
     }
 
-    const category = await this.prisma.category.create({
-      data: {
-        name: body.name,
-        description: body.description,
-        slug: slug,
-        tenantId: tenantId,
-      },
-    });
+    // Validate parentId if provided
+    if (body.parentId) {
+      const parentCategory = await this.prisma.category.findFirst({
+        where: {
+          id: body.parentId,
+          tenantId: tenantId,
+        },
+      });
+
+      if (!parentCategory) {
+        throw new BadRequestException('Parent category not found');
+      }
+    }
+
+    // Try to create category with parentId, fallback without it if column doesn't exist
+    try {
+      const category = await this.prisma.category.create({
+        data: {
+          name: body.name,
+          description: body.description,
+          slug: slug,
+          tenantId: tenantId,
+          image: body.image,
+          parentId: body.parentId || null,
+        },
+      });
+      
+      return { 
+        message: 'Category created successfully',
+        category 
+      };
+    } catch (error: any) {
+      // If parentId column doesn't exist, try without it
+      if (error.message?.includes('parentId') || error.code === 'P2009') {
+        const category = await this.prisma.category.create({
+          data: {
+            name: body.name,
+            description: body.description,
+            slug: slug,
+            tenantId: tenantId,
+            image: body.image,
+          },
+        });
+        
+        return { 
+          message: 'Category created successfully',
+          category 
+        };
+      }
+      throw error;
+    }
     
     return { 
       message: 'Category created successfully',
@@ -147,12 +219,34 @@ export class CategoryController {
       throw new BadRequestException('Category not found');
     }
 
+    // Validate parentId if provided
+    if (body.parentId !== undefined) {
+      if (body.parentId === id) {
+        throw new BadRequestException('Category cannot be its own parent');
+      }
+      
+      if (body.parentId) {
+        const parentCategory = await this.prisma.category.findFirst({
+          where: {
+            id: body.parentId,
+            tenantId: tenantId,
+          },
+        });
+
+        if (!parentCategory) {
+          throw new BadRequestException('Parent category not found');
+        }
+      }
+    }
+
     const category = await this.prisma.category.update({
       where: { id: id },
       data: {
         ...(body.name && { name: body.name }),
         ...(body.description && { description: body.description }),
         ...(body.slug && { slug: body.slug }),
+        ...(body.image !== undefined && { image: body.image }),
+        ...(body.parentId !== undefined && { parentId: body.parentId || null }),
       },
     });
 

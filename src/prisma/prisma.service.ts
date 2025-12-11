@@ -1,12 +1,12 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 
 @Injectable()
 export class PrismaService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(PrismaService.name);
   public prisma: any;
   refreshToken: any;
 
   constructor() {
-    console.log('🔧 Core PrismaService constructor called');
     try {
       const { PrismaClient } = require('.prisma/client');
       this.prisma = new PrismaClient({
@@ -17,32 +17,31 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       try {
         const { EncryptionMiddleware } = require('./prisma-encryption.middleware');
         this.prisma.$use(EncryptionMiddleware);
-        console.log('✅ Encryption Middleware registered');
+        this.logger.log('Encryption Middleware registered');
       } catch (e) {
-        console.error('⚠️ Failed to register Encryption Middleware:', e);
+        this.logger.warn('Failed to register Encryption Middleware: ' + e);
       }
 
-      console.log('✅ Core PrismaClient created successfully');
+      this.logger.log('Core PrismaClient created successfully');
     } catch (error) {
-      console.error('❌ Failed to create Core PrismaClient:', error);
+      this.logger.error('Failed to create Core PrismaClient: ' + error);
       throw error;
     }
   }
 
   async onModuleInit() {
-    console.log('🔧 Core PrismaService onModuleInit called');
     try {
       await this.prisma.$connect();
-      console.log('✅ Core Prisma connected to database');
+      this.logger.log('Core Prisma connected to database');
     } catch (error) {
-      console.error('❌ Failed to connect to Core database:', error);
+      this.logger.error('Failed to connect to Core database: ' + error);
       throw error;
     }
   }
 
   async onModuleDestroy() {
     await this.prisma.$disconnect();
-    console.log('❌ Core Prisma disconnected from database');
+    this.logger.log('Core Prisma disconnected from database');
   }
 
   // Expose all Prisma models
@@ -97,6 +96,12 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   get paymentPlan() { return this.prisma.paymentPlan; }
   get integration() { return this.prisma.integration; }
   get securityEvent() { return this.prisma.securityEvent; }
+  get supplier() { return this.prisma.supplier; }
+  get brand() { return this.prisma.brand; }
+  get unit() { return this.prisma.unit; }
+  get currency() { return this.prisma.currency; }
+  get currencySettings() { return this.prisma.currencySettings; }
+  get productSupplier() { return this.prisma.productSupplier; }
 
   $transaction(p: any) {
     return this.prisma.$transaction(p);

@@ -37,12 +37,17 @@ model Tenant {
   users              User[]
   webhookEndpoints   WebhookEndpoint[]
   transactions       Transaction[]
-  activityLogs       ActivityLog[]     @relation("ActivityLogs")
-  chatMessages       ChatMessage[]     @relation("ChatMessages")
+  activityLogs       ActivityLog[]       @relation("ActivityLogs")
+  chatMessages       ChatMessage[]       @relation("ChatMessages")
   featureFlags       FeatureFlag[]
   integrations       Integration[]
   userGifts          UserGift[]
   securityEvents     SecurityEvent[]
+  suppliers          Supplier[]
+  brands             Brand[]
+  currencies         Currency[]
+  currencySettings   CurrencySettings?
+  units              Unit[]
 
   @@map("tenants")
 }
@@ -50,6 +55,7 @@ model Tenant {
 model Product {
   id              String                  @id @default(cuid())
   tenantId        String
+  productId       String? // Optional product ID
   name            String
   description     String?
   sku             String?                 @unique
@@ -68,6 +74,8 @@ model Product {
   featured        Boolean                 @default(false)
   weight          Decimal?
   dimensions      String?
+  brandId         String? // Brand reference
+  odooProductId   String? // Odoo integration ID
   cartItems       CartItem[]
   orderItems      OrderItem[]
   categories      ProductCategory[]
@@ -75,11 +83,17 @@ model Product {
   images          ProductImage[]
   tagItems        ProductTagItem[]
   variants        ProductVariant[]
+  suppliers       ProductSupplier[]
+  brand           Brand?                  @relation(fields: [brandId], references: [id])
+  unitId          String? // Unit reference
+  unit            Unit?                   @relation(fields: [unitId], references: [id])
   tenant          Tenant                  @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
   @@index([isAvailable, isPublished])
   @@index([createdAt])
+  @@index([brandId])
+  @@index([unitId])
   @@map("products")
 }
 
@@ -114,12 +128,16 @@ model Category {
   updatedAt   DateTime          @updatedAt
   image       String?
   isActive    Boolean           @default(true)
+  parentId    String?
   tenant      Tenant            @relation(fields: [tenantId], references: [id])
   products    ProductCategory[]
+  parent      Category?         @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    Category[]        @relation("CategoryHierarchy")
 
   @@unique([tenantId, slug])
   @@index([tenantId])
   @@index([isActive])
+  @@index([parentId])
   @@map("categories")
 }
 
@@ -396,20 +414,20 @@ model Transaction {
   tenantId          String
   orderId           String?
   orderNumber       String?
-  amount            Decimal           // Total transaction amount
+  amount            Decimal // Total transaction amount
   platformFee       Decimal           @default(0) // Platform commission
-  merchantEarnings  Decimal           // Amount merchant receives (amount - platformFee)
+  merchantEarnings  Decimal // Amount merchant receives (amount - platformFee)
   currency          String            @default("USD")
   status            TransactionStatus @default(PENDING)
   paymentProvider   PaymentProvider
-  paymentMethodType String?           // e.g., "credit_card", "debit_card", "wallet"
-  transactionId     String?           // External payment gateway transaction ID
+  paymentMethodType String? // e.g., "credit_card", "debit_card", "wallet"
+  transactionId     String? // External payment gateway transaction ID
   customerEmail     String?
   customerName      String?
   description       String?
-  metadata          Json?             // Additional payment details
+  metadata          Json? // Additional payment details
   processedAt       DateTime?
-  settledAt         DateTime?         // When funds were settled to merchant
+  settledAt         DateTime? // When funds were settled to merchant
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
   tenant            Tenant            @relation(fields: [tenantId], references: [id])
@@ -602,19 +620,19 @@ model SiteConfig {
 }
 
 model User {
-  id           String        @id @default(cuid())
-  email        String        @unique
-  password     String
-  name         String?
-  role         UserRole      @default(SHOP_OWNER)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  tenantId     String?
-  avatar       String?
-  recoveryId   String?       @unique // Secret recovery ID for account recovery
-  tenant       Tenant?       @relation(fields: [tenantId], references: [id])
-  sentMessages ChatMessage[] @relation("SentMessages")
-  gifts        UserGift[]
+  id             String          @id @default(cuid())
+  email          String          @unique
+  password       String
+  name           String?
+  role           UserRole        @default(SHOP_OWNER)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  tenantId       String?
+  avatar         String?
+  recoveryId     String?         @unique // Secret recovery ID for account recovery
+  tenant         Tenant?         @relation(fields: [tenantId], references: [id])
+  sentMessages   ChatMessage[]   @relation("SentMessages")
+  gifts          UserGift[]
   securityEvents SecurityEvent[]
 
   @@index([tenantId])
@@ -622,32 +640,31 @@ model User {
 }
 
 model ActivityLog {
-  id          String   @id @default(cuid())
-  tenantId    String
-  actorId     String
-  targetId    String?
-  action      String
-  details     Json?
-  createdAt   DateTime @default(now())
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], name: "ActivityLogs")
+  id        String   @id @default(cuid())
+  tenantId  String
+  actorId   String
+  targetId  String?
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], name: "ActivityLogs")
 
   @@index([tenantId, createdAt])
   @@map("activity_logs")
 }
 
 model ChatMessage {
-  id          String   @id @default(cuid())
-  tenantId    String
-  senderId    String
-  content     String
-  createdAt   DateTime @default(now())
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], name: "ChatMessages")
-  sender      User     @relation(fields: [senderId], references: [id], name: "SentMessages")
+  id        String   @id @default(cuid())
+  tenantId  String
+  senderId  String
+  content   String
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], name: "ChatMessages")
+  sender    User     @relation(fields: [senderId], references: [id], name: "SentMessages")
 
   @@index([tenantId, createdAt])
   @@map("chat_messages")
 }
-
 
 enum TransactionStatus {
   PENDING
@@ -657,10 +674,6 @@ enum TransactionStatus {
   REFUNDED
   CANCELLED
 }
-
-
-
-
 
 enum PlanType {
   STARTER
@@ -753,20 +766,21 @@ enum IntegrationType {
   PAYMENT
   SOCIAL
   ACCOUNTING
+  SUPPLIER
 }
 
 // Feature Flags - Control features per tenant or globally
 model FeatureFlag {
-  id          String   @id @default(cuid())
-  tenantId    String?
-  feature     String   // e.g., "chat", "ai_assistant", "page_builder"
-  enabled     Boolean  @default(true)
-  config      Json?    // Feature-specific configuration
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+  id        String   @id @default(cuid())
+  tenantId  String?
+  feature   String // e.g., "chat", "ai_assistant", "page_builder"
+  enabled   Boolean  @default(true)
+  config    Json? // Feature-specific configuration
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, feature])
   @@index([feature])
   @@map("feature_flags")
@@ -774,33 +788,33 @@ model FeatureFlag {
 
 // Payment Plans - Installment payment configurations
 model PaymentPlan {
-  id              String   @id @default(cuid())
-  name            String
-  nameAr          String?
-  description     String?
-  installments    Int      // Number of installments
-  interestRate    Decimal  @default(0) // Interest rate percentage
-  minAmount       Decimal? // Minimum order amount
-  maxAmount       Decimal? // Maximum order amount
-  isActive        Boolean  @default(true)
-  allowedTenants  String[] // Empty = all tenants
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  id             String   @id @default(cuid())
+  name           String
+  nameAr         String?
+  description    String?
+  installments   Int // Number of installments
+  interestRate   Decimal  @default(0) // Interest rate percentage
+  minAmount      Decimal? // Minimum order amount
+  maxAmount      Decimal? // Maximum order amount
+  isActive       Boolean  @default(true)
+  allowedTenants String[] // Empty = all tenants
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
   @@map("payment_plans")
 }
 
 // Platform Configuration - Global platform settings
 model PlatformConfig {
-  id                    String   @id @default(cuid())
-  key                   String   @unique
-  value                 Json
-  description           String?
-  category              String   // e.g., "payment", "features", "limits"
-  isEditable            Boolean  @default(true)
-  updatedAt             DateTime @updatedAt
-  updatedBy             String?
-  
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  category    String // e.g., "payment", "features", "limits"
+  isEditable  Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?
+
   @@index([category])
   @@map("platform_configs")
 }
@@ -825,7 +839,7 @@ model PlatformFeature {
 
 // User Gifts - Gifts and rewards for users/tenants
 model UserGift {
-  id          String   @id @default(cuid())
+  id          String     @id @default(cuid())
   userId      String?
   tenantId    String?
   giftType    GiftType
@@ -834,11 +848,11 @@ model UserGift {
   status      GiftStatus @default(ACTIVE)
   expiresAt   DateTime?
   grantedBy   String
-  grantedAt   DateTime @default(now())
+  grantedAt   DateTime   @default(now())
   message     String?
-  
-  user        User?    @relation(fields: [userId], references: [id])
-  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+
+  user   User?   @relation(fields: [userId], references: [id])
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
 
   @@map("user_gifts")
 }
@@ -856,7 +870,7 @@ model SubscriptionPlan {
   billingCycle  String   @default("MONTHLY") // MONTHLY, YEARLY
   features      String[]
   featuresAr    String[]
-  limits        Json?    // { products: 100, staff: 2 }
+  limits        Json? // { products: 100, staff: 2 }
   isActive      Boolean  @default(true)
   isPopular     Boolean  @default(false)
   sortOrder     Int      @default(0)
@@ -887,54 +901,180 @@ model Integration {
   tenantId    String?
   name        String
   type        IntegrationType
-  provider    String          // e.g., "google_analytics", "mailchimp", "twilio"
-  credentials Json            // Encrypted credentials
+  provider    String // e.g., "google_analytics", "mailchimp", "twilio"
+  credentials Json // Encrypted credentials
   settings    Json?
   isActive    Boolean         @default(true)
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
-  
-  tenant      Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, type])
   @@map("integrations")
 }
 
 // Partner - Business partners with commission structure
 model Partner {
-  id                String         @id @default(cuid())
-  name              String
-  nameAr            String?
-  email             String         @unique
-  phone             String?
-  commissionType    CommissionType @default(PERCENTAGE)
-  commissionValue   Decimal
-  isActive          Boolean        @default(true)
-  allowedFeatures   String[]
-  settings          Json?
-  aiScript          String?        @db.Text // Custom AI training script/context
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
-  
+  id              String         @id @default(cuid())
+  name            String
+  nameAr          String?
+  email           String         @unique
+  phone           String?
+  commissionType  CommissionType @default(PERCENTAGE)
+  commissionValue Decimal
+  isActive        Boolean        @default(true)
+  allowedFeatures String[]
+  settings        Json?
+  aiScript        String?        @db.Text // Custom AI training script/context
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
   @@map("partners")
 }
 
 // Audit Log - Track all master dashboard actions
 model AuditLog {
-  id          String   @id @default(cuid())
-  userId      String
-  userRole    UserRole
-  action      String   // e.g., "TENANT_CREATED", "GATEWAY_ENABLED"
-  resource    String   // e.g., "Tenant", "PaymentGateway"
-  resourceId  String?
-  changes     Json?    // Before/after values
-  ipAddress   String?
-  userAgent   String?
-  createdAt   DateTime @default(now())
-  
+  id         String   @id @default(cuid())
+  userId     String
+  userRole   UserRole
+  action     String // e.g., "TENANT_CREATED", "GATEWAY_ENABLED"
+  resource   String // e.g., "Tenant", "PaymentGateway"
+  resourceId String?
+  changes    Json? // Before/after values
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
   @@index([userId, createdAt])
   @@index([action, createdAt])
   @@map("audit_logs")
+}
+
+// Supplier - For managing suppliers with discount rates
+model Supplier {
+  id            String            @id @default(cuid())
+  tenantId      String
+  name          String
+  nameAr        String?
+  email         String?
+  phone         String?
+  contactPerson String?
+  address       String?
+  discountRate  Decimal           @default(0) // Discount percentage
+  isActive      Boolean           @default(true)
+  notes         String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  tenant        Tenant            @relation(fields: [tenantId], references: [id])
+  products      ProductSupplier[]
+
+  @@index([tenantId])
+  @@index([isActive])
+  @@map("suppliers")
+}
+
+// Brand - For managing product brands
+model Brand {
+  id                         String    @id @default(cuid())
+  tenantId                   String
+  name                       String
+  nameAr                     String?
+  code                       String? // Brand code
+  shortName                  String?
+  brandType                  String? // Brand type/category
+  status                     String    @default("Active") // Active, Inactive
+  rechargeUsdValue           Decimal?  @default(0)
+  usdValueForCoins           Decimal?  @default(0)
+  safetyStock                Decimal?  @default(0)
+  leadTime                   Int?      @default(0) // Days
+  reorderPoint               Decimal?  @default(0)
+  averageConsumptionPerMonth Decimal?  @default(0)
+  averageConsumptionPerDay   Decimal?  @default(0)
+  abcAnalysis                String? // A, B, C - High/Medium/Low Value
+  odooCategoryId             String? // Odoo integration ID
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+  tenant                     Tenant    @relation(fields: [tenantId], references: [id])
+  products                   Product[]
+
+  @@index([tenantId])
+  @@index([code])
+  @@map("brands")
+}
+
+// ProductSupplier - Many-to-many relationship between Product and Supplier
+model ProductSupplier {
+  id           String   @id @default(cuid())
+  productId    String
+  supplierId   String
+  discountRate Decimal  @default(0) // Product-specific discount from this supplier
+  isPrimary    Boolean  @default(false) // Primary supplier for this product
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplier     Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, supplierId])
+  @@index([productId])
+  @@index([supplierId])
+  @@map("product_suppliers")
+}
+
+// Currency - Available currencies
+model Currency {
+  id           String   @id @default(cuid())
+  tenantId     String
+  code         String // ISO currency code (USD, SAR, EUR, etc.)
+  name         String
+  nameAr       String?
+  symbol       String // $, SAR, €, etc.
+  exchangeRate Decimal  @default(1) // Exchange rate to base currency
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([isActive])
+  @@map("currencies")
+}
+
+// CurrencySettings - Tenant currency configuration
+model CurrencySettings {
+  id              String    @id @default(cuid())
+  tenantId        String    @unique
+  baseCurrency    String    @default("SAR") // Base currency code
+  autoUpdateRates Boolean   @default(false)
+  lastUpdated     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@map("currency_settings")
+}
+
+// Unit - Product units with costs
+model Unit {
+  id          String    @id @default(cuid())
+  tenantId    String
+  name        String
+  nameAr      String?
+  code        String // Unit code (e.g., "KG", "L", "PCS")
+  symbol      String? // Unit symbol (e.g., "kg", "l", "pcs")
+  cost        Decimal   @default(0) // Cost in base currency
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  products    Product[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([isActive])
+  @@map("units")
 }
 
 model SecurityEvent {
@@ -946,7 +1086,7 @@ model SecurityEvent {
   ipAddress   String?
   userAgent   String?
   description String
-  metadata    Json?             // Changed from String to Json for easier access in core
+  metadata    Json? // Changed from String to Json for easier access in core
   // Geolocation fields
   country     String?
   countryCode String?
@@ -997,6 +1137,3 @@ enum SecuritySeverity {
   HIGH
   CRITICAL
 }
-
-
-

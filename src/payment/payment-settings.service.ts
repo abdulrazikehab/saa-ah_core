@@ -43,42 +43,73 @@ export class PaymentSettingsService {
 
   /**
    * Get available payment methods for a tenant from the database
+   * Includes both tenant-specific gateways and admin-created global gateways (where tenantId is null)
    */
   async getAvailablePaymentMethods(tenantId: string): Promise<AvailablePaymentMethod[]> {
-    const methods = await this.prisma.paymentMethod.findMany({
-      where: {
-        tenantId,
-        isActive: true,
-      },
-      select: {
-        id: true,
-        provider: true,
-        name: true,
-        isActive: true,
-      },
-    });
+    try {
+      // Get both tenant-specific gateways and admin-created global gateways (tenantId is null)
+      const methods = await this.prisma.paymentMethod.findMany({
+        where: {
+          OR: [
+            tenantId && tenantId !== 'default' ? { tenantId } : undefined,
+            { tenantId: null }, // Admin-created global gateways
+          ].filter(Boolean) as any,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          provider: true,
+          name: true,
+          isActive: true,
+          tenantId: true,
+        },
+        orderBy: [
+          { tenantId: 'asc' }, // Tenant-specific first, then global (null comes last)
+          { createdAt: 'desc' },
+        ],
+      });
 
-    // Always include Cash on Delivery as a default option
-    const hasCOD = methods.some((m: AvailablePaymentMethod) => m.provider === 'CASH_ON_DELIVERY');
-    if (!hasCOD) {
-      methods.push({
+      // Always include Cash on Delivery as a default option if not already present
+      const hasCOD = methods.some((m: any) => m.provider === 'CASH_ON_DELIVERY');
+      if (!hasCOD) {
+        methods.push({
+          id: 'default-cod',
+          provider: 'CASH_ON_DELIVERY',
+          name: 'الدفع عند الاستلام',
+          isActive: true,
+          tenantId: null,
+        });
+      }
+
+      return methods;
+    } catch (error) {
+      // Return default COD method if there's an error
+      console.error('Error fetching available payment methods:', error);
+      return [{
         id: 'default-cod',
         provider: 'CASH_ON_DELIVERY',
         name: 'الدفع عند الاستلام',
         isActive: true,
-      });
+      }];
     }
-
-    return methods;
   }
 
   /**
    * Get payment settings for a tenant from the database
+   * Includes both tenant-specific gateways and admin-created global gateways
    */
   async getSettings(tenantId: string): Promise<PaymentSettings> {
-    const methods = await this.prisma.paymentMethod.findMany({
-      where: { tenantId, isActive: true },
-    });
+    try {
+      // Get both tenant-specific gateways and admin-created global gateways (tenantId is null)
+      const methods = await this.prisma.paymentMethod.findMany({
+        where: {
+          OR: [
+            tenantId && tenantId !== 'default' ? { tenantId } : undefined,
+            { tenantId: null }, // Admin-created global gateways
+          ].filter(Boolean) as any,
+          isActive: true,
+        },
+      });
 
     const hyperPay = methods.find((m: PaymentMethodRecord) => m.provider === 'HYPERPAY');
     const stripe = methods.find((m: PaymentMethodRecord) => m.provider === 'STRIPE');
@@ -86,26 +117,50 @@ export class PaymentSettingsService {
     const neoleap = methods.find((m: PaymentMethodRecord) => m.provider === 'NEOLEAP');
     const cod = methods.find((m: PaymentMethodRecord) => m.provider === 'CASH_ON_DELIVERY');
 
-    return {
-      hyperPayEnabled: !!hyperPay,
-      hyperPayEntityId: hyperPay?.credentials?.entityId,
-      hyperPayAccessToken: hyperPay?.credentials?.accessToken,
-      hyperPayTestMode: hyperPay?.credentials?.testMode ?? true,
-      hyperPayCurrency: hyperPay?.credentials?.currency ?? 'SAR',
-      stripeEnabled: !!stripe,
-      stripePublishableKey: stripe?.credentials?.publishableKey,
-      stripeSecretKey: stripe?.credentials?.secretKey,
-      payPalEnabled: !!paypal,
-      payPalClientId: paypal?.credentials?.clientId,
-      payPalSecret: paypal?.credentials?.secret,
-      payPalMode: paypal?.credentials?.mode ?? 'sandbox',
-      neoleapEnabled: !!neoleap,
-      neoleapClientId: neoleap?.credentials?.clientId,
-      neoleapClientSecret: neoleap?.credentials?.clientSecret,
-      neoleapTerminalId: neoleap?.credentials?.terminalId,
-      neoleapMode: neoleap?.credentials?.mode ?? 'test',
-      codEnabled: cod ? true : true, // COD is enabled by default
-    };
+      return {
+        hyperPayEnabled: !!hyperPay,
+        hyperPayEntityId: hyperPay?.credentials?.entityId,
+        hyperPayAccessToken: hyperPay?.credentials?.accessToken,
+        hyperPayTestMode: hyperPay?.credentials?.testMode ?? true,
+        hyperPayCurrency: hyperPay?.credentials?.currency ?? 'SAR',
+        stripeEnabled: !!stripe,
+        stripePublishableKey: stripe?.credentials?.publishableKey,
+        stripeSecretKey: stripe?.credentials?.secretKey,
+        payPalEnabled: !!paypal,
+        payPalClientId: paypal?.credentials?.clientId,
+        payPalSecret: paypal?.credentials?.secret,
+        payPalMode: paypal?.credentials?.mode ?? 'sandbox',
+        neoleapEnabled: !!neoleap,
+        neoleapClientId: neoleap?.credentials?.clientId,
+        neoleapClientSecret: neoleap?.credentials?.clientSecret,
+        neoleapTerminalId: neoleap?.credentials?.terminalId,
+        neoleapMode: neoleap?.credentials?.mode ?? 'test',
+        codEnabled: cod ? true : true, // COD is enabled by default
+      };
+    } catch (error) {
+      // Return default settings if there's an error
+      console.error('Error fetching payment settings:', error);
+      return {
+        hyperPayEnabled: false,
+        hyperPayEntityId: undefined,
+        hyperPayAccessToken: undefined,
+        hyperPayTestMode: true,
+        hyperPayCurrency: 'SAR',
+        stripeEnabled: false,
+        stripePublishableKey: undefined,
+        stripeSecretKey: undefined,
+        payPalEnabled: false,
+        payPalClientId: undefined,
+        payPalSecret: undefined,
+        payPalMode: 'sandbox',
+        neoleapEnabled: false,
+        neoleapClientId: undefined,
+        neoleapClientSecret: undefined,
+        neoleapTerminalId: undefined,
+        neoleapMode: 'test',
+        codEnabled: true, // COD is enabled by default
+      };
+    }
   }
 
   /**

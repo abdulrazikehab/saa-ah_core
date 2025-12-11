@@ -43,4 +43,32 @@ export class ProductResponseDto {
   variants?: ProductVariantResponseDto[];
   images?: ProductImageResponseDto[];
   categories?: any[]; // We'll define CategoryResponseDto later
+  productId?: string;
+  odooProductId?: string;
+  brand?: {
+    id: string;
+    name: string;
+    nameAr?: string;
+    code?: string;
+  };
+  suppliers?: Array<{
+    id: string;
+    supplierId: string;
+    supplier: {
+      id: string;
+      name: string;
+      nameAr?: string;
+      discountRate: number;
+    };
+    discountRate: number;
+    isPrimary: boolean;
+  }>;
+  unit?: {
+    id: string;
+    name: string;
+    nameAr?: string;
+    code: string;
+    symbol?: string;
+    cost: number;
+  };
 }

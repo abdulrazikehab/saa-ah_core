@@ -1,10 +1,13 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Request, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Request, BadRequestException, ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { TenantService } from './tenant.service';
 import { TenantSyncService } from './tenant-sync.service';
+import { AuthClientService } from './auth-client.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthenticatedRequest } from '../types/request.types';
 import { TemplateService } from '../template/template.service';
 import { PageService } from '../page/page.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { v4 as uuidv4 } from 'uuid';
 
 @UseGuards(JwtAuthGuard)
 @Controller('tenants')
@@ -12,8 +15,10 @@ export class TenantController {
   constructor(
     private readonly tenantService: TenantService,
     private readonly tenantSyncService: TenantSyncService,
+    private readonly authClientService: AuthClientService,
     private readonly templateService: TemplateService,
     private readonly pageService: PageService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Post('setup')
@@ -35,22 +40,52 @@ export class TenantController {
     // Check if subdomain is already taken
     const isAvailable = await this.tenantService.checkSubdomainAvailability(body.subdomain);
     if (!isAvailable) {
-        // Check if it belongs to the current user (re-setup case)
-        const existingTenant = await this.tenantService.getTenant(req.user.id).catch(() => null);
-        if (!existingTenant || existingTenant.subdomain !== body.subdomain) {
-             throw new ConflictException('Subdomain is already taken');
-        }
+      throw new ConflictException('Subdomain is already taken');
     }
 
-    // Create tenant using user's ID as tenant ID
-    const tenantId = req.user.id;
+    // Check market limit
+    const accessToken = req.headers.authorization?.replace('Bearer ', '') || '';
+    const limitCheck = await this.authClientService.checkCanCreateMarket(req.user.id, accessToken);
     
-    await this.tenantSyncService.ensureTenantExists(tenantId, {
-      name: body.name,
-      subdomain: body.subdomain,
-      description: body.description,
-      templateId: body.template,
-    });
+    if (!limitCheck.allowed) {
+      throw new ForbiddenException(
+        `Market limit reached. You have ${limitCheck.currentCount} of ${limitCheck.limit} markets. Please contact support to increase your limit.`
+      );
+    }
+
+    // Generate new tenant ID
+    const tenantId = uuidv4();
+    
+    // Create tenant in both core and auth databases, and link to user
+    try {
+      // Create in auth database and link user (this also checks market limit)
+      await this.authClientService.createTenantAndLink(
+        req.user.id,
+        {
+          id: tenantId,
+          name: body.name,
+          subdomain: body.subdomain,
+          plan: 'STARTER',
+          status: 'ACTIVE',
+        },
+        accessToken
+      );
+
+      // Create tenant in core database
+      await this.tenantSyncService.ensureTenantExists(tenantId, {
+        name: body.name,
+        subdomain: body.subdomain,
+        description: body.description,
+        templateId: body.template,
+      });
+    } catch (error: any) {
+      // If creation fails, try to clean up
+      await this.prisma.tenant.delete({ where: { id: tenantId } }).catch(() => {});
+      if (error.message?.includes('Market limit reached')) {
+        throw new ForbiddenException(error.message);
+      }
+      throw new BadRequestException(error.message || 'Failed to create market. Please try again.');
+    }
 
     // If template is selected, initialize the Home page
     if (body.template) {

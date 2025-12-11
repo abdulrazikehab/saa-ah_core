@@ -1,10 +1,12 @@
-import { Injectable, NestMiddleware } from '@nestjs/common';
+import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { DomainService } from '../domain/domain.service';
 
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
+  private readonly logger = new Logger(TenantMiddleware.name);
+
   constructor(
     private jwtService: JwtService,
     private domainService: DomainService,
@@ -58,8 +60,6 @@ export class TenantMiddleware implements NestMiddleware {
     if (tenantId) {
       (req as any).tenantId = tenantId;
       (req as any).tenantDetectedFrom = detectedFrom;
-      
-      console.log(`🏢 Tenant detected: ${tenantId} (from: ${detectedFrom})`);
     }
 
     next();

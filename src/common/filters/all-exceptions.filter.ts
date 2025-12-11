@@ -5,20 +5,26 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  Injectable,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { PrismaService } from '../../prisma/prisma.service';
 
+@Injectable()
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
 
-  catch(exception: unknown, host: ArgumentsHost) {
+  constructor(private prisma: PrismaService) {}
+
+  async catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message: string | object = 'Internal server error';
+    let stack: string | undefined;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -28,13 +34,38 @@ export class AllExceptionsFilter implements ExceptionFilter {
         : exceptionResponse;
     } else if (exception instanceof Error) {
       message = exception.message;
+      stack = exception.stack;
     }
 
-    // Log the error
-    this.logger.error(
-      `${request.method} ${request.url}`,
-      exception instanceof Error ? exception.stack : exception,
-    );
+    // Save error to database using activityLog
+    try {
+      const user = (request as any).user;
+      if (this.prisma.activityLog) {
+        await this.prisma.activityLog.create({
+          data: {
+            tenantId: user?.tenantId || request.headers['x-tenant-id'] as string || 'system',
+            actorId: user?.id || user?.sub || 'system',
+            action: 'ERROR',
+            targetId: status.toString(),
+            details: {
+              severity: status >= 500 ? 'CRITICAL' : status >= 400 ? 'HIGH' : 'MEDIUM',
+              message: typeof message === 'string' ? message : JSON.stringify(message),
+              stack,
+              method: request.method,
+              path: request.url,
+              statusCode: status,
+              ipAddress: request.ip || request.connection?.remoteAddress,
+              userAgent: request.headers['user-agent'],
+              resourceType: 'SYSTEM',
+              userEmail: user?.email,
+              userName: user?.name,
+            },
+          },
+        });
+      }
+    } catch (error) {
+      // Silent fail - don't break error response if logging fails
+    }
 
     // Send standardized error response
     response.status(status).json({

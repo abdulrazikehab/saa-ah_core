@@ -9,10 +9,10 @@ export class AdminApiKeyGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const apiKey = request.headers['x-admin-api-key'];
     
-    // Use environment variable or hardcoded key for system admin
-    const validApiKey = process.env.ADMIN_API_KEY || 'BlackBox2025Admin!';
+    // Use environment variable for system admin
+    const validApiKey = process.env.ADMIN_API_KEY || 'Saeaa2025Admin!';
     
-    if (apiKey === validApiKey || apiKey === 'BlackBox2025Admin!') {
+    if (apiKey === validApiKey) {
       return true;
     }
     

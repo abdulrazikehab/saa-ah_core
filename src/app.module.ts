@@ -5,6 +5,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { ActionLoggingInterceptor } from './common/interceptors/action-logging.interceptor';
 import { TenantModule } from './tenant/tenant.module';
 import { TenantMiddleware } from './tenant/tenant.middleware';
 import { UserModule } from './user/user.module';
@@ -48,6 +49,11 @@ import { ReportModule } from './report/report.module';
 import { PartnerModule } from './partner/partner.module';
 import { MasterAdminModule } from './admin/master-admin.module';
 import { PublicModule } from './public/public.module';
+import { SupplierModule } from './supplier/supplier.module';
+import { BrandModule } from './brand/brand.module';
+import { CurrencyModule } from './currency/currency.module';
+import { UnitModule } from './unit/unit.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   // Main Application Module
@@ -111,6 +117,11 @@ import { PublicModule } from './public/public.module';
     PartnerModule,
     MasterAdminModule,
     PublicModule,
+    SupplierModule,
+    BrandModule,
+    CurrencyModule,
+    UnitModule,
+    NotificationsModule,
   ],
   controllers: [AdminController],
   providers: [
@@ -125,6 +136,10 @@ import { PublicModule } from './public/public.module';
     {
       provide: APP_INTERCEPTOR,
       useClass: TransformInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ActionLoggingInterceptor,
     },
   ],
 })

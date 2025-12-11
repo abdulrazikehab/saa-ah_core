@@ -124,4 +124,45 @@ export class CreateProductDto {
   @IsString({ each: true })
   @IsOptional()
   tags?: string[];
+
+  @IsString()
+  @IsOptional()
+  productId?: string;
+
+  @IsString()
+  @IsOptional()
+  odooProductId?: string;
+
+  @IsString()
+  @IsOptional()
+  brandId?: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  supplierIds?: string[];
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductSupplierDto)
+  @IsOptional()
+  suppliers?: ProductSupplierDto[];
+
+  @IsString()
+  @IsOptional()
+  unitId?: string;
+}
+
+export class ProductSupplierDto {
+  @IsString()
+  supplierId!: string;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  discountRate?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  isPrimary?: boolean;
 }

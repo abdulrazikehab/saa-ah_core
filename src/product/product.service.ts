@@ -30,7 +30,7 @@ export class ProductService {
     throw new ForbiddenException(`Cannot create product: Tenant ${tenantId} is not valid`);
   }
 
-  const { variants, images, categoryIds, ...productData } = createProductDto;
+  const { variants, images, categoryIds, suppliers, supplierIds, ...productData } = createProductDto;
 
   // Check if SKU exists within tenant
   let existingProduct = null;
@@ -79,6 +79,55 @@ export class ProductService {
     }
   }
 
+  // Validate brand exists if provided
+  if (productData.brandId) {
+    const brand = await this.prisma.brand.findFirst({
+      where: {
+        id: productData.brandId,
+        tenantId,
+      },
+    });
+    if (!brand) {
+      this.logger.warn(`⚠️ Brand ${productData.brandId} not found, creating product without brand`);
+      delete productData.brandId;
+    }
+  }
+
+  // Validate suppliers exist if provided
+  let validSuppliers: Array<{ supplierId: string; discountRate?: number; isPrimary?: boolean }> = [];
+  if (suppliers && suppliers.length > 0) {
+    for (const supplierData of suppliers) {
+      const supplier = await this.prisma.supplier.findFirst({
+        where: {
+          id: supplierData.supplierId,
+          tenantId,
+          isActive: true,
+        },
+      });
+      if (supplier) {
+        validSuppliers.push({
+          supplierId: supplierData.supplierId,
+          discountRate: supplierData.discountRate || supplier.discountRate || 0,
+          isPrimary: supplierData.isPrimary || false,
+        });
+      }
+    }
+  } else if (supplierIds && supplierIds.length > 0) {
+    // If only supplierIds provided, use default discount rates
+    const existingSuppliers = await this.prisma.supplier.findMany({
+      where: {
+        id: { in: supplierIds },
+        tenantId,
+        isActive: true,
+      },
+    });
+    validSuppliers = existingSuppliers.map((s, index) => ({
+      supplierId: s.id,
+      discountRate: Number(s.discountRate),
+      isPrimary: index === 0, // First supplier is primary by default
+    }));
+  }
+
   try {
     this.logger.log(`📦 Creating product in database...`);
     
@@ -105,20 +154,57 @@ export class ProductService {
             },
           })),
         } : undefined,
-      },
-      include: {
-        variants: true,
-        images: {
-          orderBy: {
-            sortOrder: 'asc',
+        // Connect suppliers (only if relation exists)
+        ...(validSuppliers.length > 0 && {
+          suppliers: {
+            create: validSuppliers.map(s => ({
+              supplierId: s.supplierId,
+              discountRate: s.discountRate,
+              isPrimary: s.isPrimary,
+            })),
           },
-        },
-        categories: {
-          include: {
-            category: true,
-          },
-        },
+        }),
+        // Connect unit if provided
+        ...(productData.unitId && { unitId: productData.unitId }),
       },
+      include: (() => {
+        const includeObj: any = {
+          variants: true,
+          images: {
+            orderBy: {
+              sortOrder: 'asc',
+            },
+          },
+          categories: {
+            include: {
+              category: true,
+            },
+          },
+        };
+        
+        // Conditionally include suppliers and brand
+        const productModel = (this.prisma as any)._dmmf?.datamodel?.models?.find((m: any) => m.name === 'Product');
+        if (productModel) {
+          const hasSuppliers = productModel.fields?.some((f: any) => f.name === 'suppliers');
+          const hasBrand = productModel.fields?.some((f: any) => f.name === 'brand');
+          
+          if (hasSuppliers) {
+            includeObj.suppliers = {
+              include: {
+                supplier: true,
+              },
+            };
+          }
+      if (hasBrand) {
+        includeObj.brand = true;
+      }
+    }
+    
+    // Always try to include unit
+    includeObj.unit = true;
+    
+    return includeObj;
+  })(),
     });
 
     this.logger.log(`✅ Product created successfully: ${product.id}`);
@@ -180,32 +266,93 @@ export class ProductService {
       where.isAvailable = filters.isActive;
     }
 
-    const [products, total] = await Promise.all([
-      this.prisma.product.findMany({
-        where,
-        include: {
-          variants: true,
-          images: {
-            orderBy: {
-              sortOrder: 'asc',
-            },
-          },
-          categories: {
-            include: {
-              category: true,
-            },
-          },
-        },
-        skip,
-        take: limitNum,
+    // Build include object - conditionally include new relations
+    const include: any = {
+      variants: true,
+      images: {
         orderBy: {
-          createdAt: 'desc',
+          sortOrder: 'asc',
         },
-      }),
-      this.prisma.product.count({
-        where,
-      }),
-    ]);
+      },
+      categories: {
+        include: {
+          category: true,
+        },
+      },
+    };
+
+    // Conditionally include suppliers and brand if schema supports them
+    // Check if the relation fields exist in the Prisma schema
+    const productModel = (this.prisma as any)._dmmf?.datamodel?.models?.find((m: any) => m.name === 'Product');
+    if (productModel) {
+      const hasSuppliers = productModel.fields?.some((f: any) => f.name === 'suppliers');
+      const hasBrand = productModel.fields?.some((f: any) => f.name === 'brand');
+      
+      if (hasSuppliers) {
+        include.suppliers = {
+          include: {
+            supplier: true,
+          },
+        };
+      }
+      if (hasBrand) {
+        include.brand = true;
+      }
+    }
+    
+    // Always try to include unit
+    include.unit = true;
+
+    let products: any[];
+    let total: number;
+
+    try {
+      // Try with full includes (suppliers, brand)
+      [products, total] = await Promise.all([
+        this.prisma.product.findMany({
+          where,
+          include,
+          skip,
+          take: limitNum,
+          orderBy: {
+            createdAt: 'desc',
+          },
+        }),
+        this.prisma.product.count({
+          where,
+        }),
+      ]);
+    } catch (error: any) {
+      // If relations don't exist yet, fall back to basic includes
+      this.logger.warn('New relations not available, using basic query:', error.message);
+      const basicInclude = {
+        variants: true,
+        images: {
+          orderBy: {
+            sortOrder: 'asc',
+          },
+        },
+        categories: {
+          include: {
+            category: true,
+          },
+        },
+      };
+      [products, total] = await Promise.all([
+        this.prisma.product.findMany({
+          where,
+          include: basicInclude,
+          skip,
+          take: limitNum,
+          orderBy: {
+            createdAt: 'desc',
+          },
+        }),
+        this.prisma.product.count({
+          where,
+        }),
+      ]);
+    }
 
     this.logger.log(`📦 Fetched ${products.length} products for tenant ${tenantId} (total: ${total})`);
     if (products.length > 0) {
@@ -239,25 +386,75 @@ export class ProductService {
     // Ensure tenant exists
     await this.tenantSyncService.ensureTenantExists(tenantId);
 
-    const product = await this.prisma.product.findFirst({
-      where: {
-        id,
-        tenantId,
-      },
-      include: {
-        variants: true,
-        images: {
-          orderBy: {
-            sortOrder: 'asc',
-          },
+    // Build include object - conditionally include new relations
+    const includeObj: any = {
+      variants: true,
+      images: {
+        orderBy: {
+          sortOrder: 'asc',
         },
-        categories: {
+      },
+      categories: {
+        include: {
+          category: true,
+        },
+      },
+    };
+
+    // Conditionally include suppliers and brand
+    const productModel = (this.prisma as any)._dmmf?.datamodel?.models?.find((m: any) => m.name === 'Product');
+    if (productModel) {
+      const hasSuppliers = productModel.fields?.some((f: any) => f.name === 'suppliers');
+      const hasBrand = productModel.fields?.some((f: any) => f.name === 'brand');
+      
+      if (hasSuppliers) {
+        includeObj.suppliers = {
           include: {
-            category: true,
+            supplier: true,
+          },
+        };
+      }
+      if (hasBrand) {
+        includeObj.brand = true;
+      }
+    }
+    
+    // Always try to include unit
+    includeObj.unit = true;
+
+    let product: any;
+    
+    try {
+      product = await this.prisma.product.findFirst({
+        where: {
+          id,
+          tenantId,
+        },
+        include: includeObj,
+      });
+    } catch (error: any) {
+      // Fall back to basic includes if relations don't exist
+      this.logger.warn('New relations not available, using basic query:', error.message);
+      product = await this.prisma.product.findFirst({
+        where: {
+          id,
+          tenantId,
+        },
+        include: {
+          variants: true,
+          images: {
+            orderBy: {
+              sortOrder: 'asc',
+            },
+          },
+          categories: {
+            include: {
+              category: true,
+            },
           },
         },
-      },
-    });
+      });
+    }
 
     if (!product) {
       throw new NotFoundException('Product not found');
@@ -413,6 +610,11 @@ export class ProductService {
         where: { productId: id },
       });
 
+      // Delete product-supplier associations
+      await tx.productSupplier.deleteMany({
+        where: { productId: id },
+      });
+
       // Finally, delete the product
       await tx.product.delete({
         where: { id },
@@ -489,6 +691,34 @@ export class ProductService {
         createdAt: image.createdAt,
       })),
       categories: product.categories?.map((pc: any) => pc.category),
+      productId: product.productId,
+      odooProductId: product.odooProductId,
+      brand: product.brand ? {
+        id: product.brand.id,
+        name: product.brand.name,
+        nameAr: product.brand.nameAr,
+        code: product.brand.code,
+      } : undefined,
+      suppliers: product.suppliers?.map((ps: any) => ({
+        id: ps.id,
+        supplierId: ps.supplierId,
+        supplier: {
+          id: ps.supplier.id,
+          name: ps.supplier.name,
+          nameAr: ps.supplier.nameAr,
+          discountRate: Number(ps.supplier.discountRate),
+        },
+        discountRate: Number(ps.discountRate),
+        isPrimary: ps.isPrimary,
+      })),
+      unit: product.unit ? {
+        id: product.unit.id,
+        name: product.unit.name,
+        nameAr: product.unit.nameAr,
+        code: product.unit.code,
+        symbol: product.unit.symbol,
+        cost: Number(product.unit.cost),
+      } : undefined,
     };
 
     this.logger.debug(`Mapped product ${product.id}: price=${response.price}, images=${response.images?.length || 0}, variants=${response.variants?.length || 0}`);

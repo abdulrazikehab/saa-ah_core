@@ -26,6 +26,11 @@ export class SiteConfigController {
       }
     }
 
+    // If still no tenantId, use default
+    if (!tenantId) {
+      tenantId = 'default';
+    }
+
     return this.configService.getConfig(tenantId, themeId);
   }
 

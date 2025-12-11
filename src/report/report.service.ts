@@ -40,18 +40,28 @@ export class ReportService {
             quantity: true,
             price: true
           }
+        },
+        variants: {
+          select: {
+            inventoryQuantity: true
+          }
         }
       }
     });
 
-    return products.map((p: any) => ({
-      id: p.id,
-      name: p.name,
-      sku: p.sku,
-      stock: 0, // TODO: Add stock tracking
-      salesCount: p.orderItems.reduce((acc: number, item: any) => acc + item.quantity, 0),
-      revenue: p.orderItems.reduce((acc: number, item: any) => acc + (Number(item.price) * item.quantity), 0)
-    })).sort((a: any, b: any) => b.revenue - a.revenue);
+    return products.map((p: any) => {
+      // Calculate total stock from variants (inventoryQuantity field)
+      const totalStock = p.variants?.reduce((sum: number, v: any) => sum + (Number(v.inventoryQuantity || 0)), 0) || 0;
+      
+      return {
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        stock: totalStock,
+        salesCount: p.orderItems.reduce((acc: number, item: any) => acc + item.quantity, 0),
+        revenue: p.orderItems.reduce((acc: number, item: any) => acc + (Number(item.price) * item.quantity), 0)
+      };
+    }).sort((a: any, b: any) => b.revenue - a.revenue);
   }
 
   async getCustomerReport(tenantId: string) {

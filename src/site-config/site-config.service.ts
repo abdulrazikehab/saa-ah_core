@@ -16,7 +16,55 @@ export class SiteConfigService {
   ) {}
 
   /** Get configuration for a tenant */
-  async getConfig(tenantId: string, themeId?: string) {
+  async getConfig(tenantId: string | null | undefined, themeId?: string) {
+    if (!tenantId || tenantId === 'default') {
+      // Return default config if no tenantId
+      const defaultSettings = {
+        storeName: '',
+        storeNameAr: '',
+        storeDescription: '',
+        storeDescriptionAr: '',
+        email: '',
+        phone: '',
+        address: '',
+        city: '',
+        country: 'SA',
+        postalCode: '',
+        currency: 'SAR',
+        timezone: 'Asia/Riyadh',
+        language: 'ar',
+        taxEnabled: true,
+        taxRate: 15,
+        shippingEnabled: true,
+        inventoryTracking: true,
+        lowStockThreshold: 10,
+        allowGuestCheckout: true,
+        requireEmailVerification: false,
+        maintenanceMode: false,
+        storeLogoUrl: '',
+        googlePlayUrl: '',
+        appStoreUrl: '',
+        blockVpnUsers: false,
+      };
+      
+      return {
+        tenantId: tenantId || 'default',
+        header: { title: 'Store', links: [] },
+        footer: { links: [] },
+        background: { type: 'color', value: '#ffffff' },
+        language: 'ar',
+        theme: 'light',
+        paymentMethods: [],
+        hyperpayConfig: {
+          entityId: '',
+          accessToken: '',
+          testMode: true,
+          currency: 'SAR',
+        },
+        settings: defaultSettings,
+      };
+    }
+
     const cfg = await this.prisma.siteConfig.findUnique({
       where: { tenantId },
     });

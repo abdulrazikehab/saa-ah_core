@@ -18,7 +18,13 @@ export class PaymentController {
   @UseGuards(JwtAuthGuard)
   @Get('settings')
   async getSettings(@Request() req: any) {
-    const tenantId = req.user?.tenantId || req.tenantId || 'default';
+    const tenantId = req.user?.tenantId || req.tenantId || req.user?.id || 'default';
+    if (!tenantId || tenantId === 'default') {
+      // Try to get tenantId from user record if available
+      if (req.user?.id) {
+        // Could fetch from user record, but for now use default
+      }
+    }
     return this.paymentSettings.getSettings(tenantId);
   }
 
@@ -29,7 +35,7 @@ export class PaymentController {
   @Public()
   @Get('methods')
   async getAvailableMethods(@Request() req: any) {
-    const tenantId = req.tenantId || 'default';
+    const tenantId = req.user?.tenantId || req.tenantId || req.user?.id || 'default';
     return this.paymentSettings.getAvailablePaymentMethods(tenantId);
   }
 
@@ -40,7 +46,7 @@ export class PaymentController {
   @UseGuards(JwtAuthGuard)
   @Put('settings')
   async updateSettings(@Request() req: any, @Body() data: any) {
-    const tenantId = req.user?.tenantId || 'default';
+    const tenantId = req.user?.tenantId || req.user?.id || req.tenantId || 'default';
     return this.paymentSettings.updateSettings(tenantId, data);
   }
 

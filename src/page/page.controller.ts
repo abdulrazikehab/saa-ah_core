@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Headers } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Headers, Query } from '@nestjs/common';
 import { PageService } from './page.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../guard/roles.guard';
@@ -14,19 +14,15 @@ export class PageController {
   private resolveTenantId(req: any, headerTenantId?: string): string {
     // Priority: 1. Middleware (subdomain/domain), 2. JWT user, 3. Header, 4. Default
     if (req.tenantId) {
-      console.log('🏢 Tenant from middleware:', req.tenantId);
       return req.tenantId;
     }
     if (req.user?.tenantId) {
-      console.log('🏢 Tenant from JWT:', req.user.tenantId);
       return req.user.tenantId;
     }
     if (headerTenantId) {
-      console.log('🏢 Tenant from header:', headerTenantId);
       return headerTenantId;
     }
     const defaultTenant = process.env.DEFAULT_TENANT_ID || 'default';
-    console.log('🏢 Tenant from default:', defaultTenant);
     return defaultTenant;
   }
 
@@ -43,7 +39,6 @@ export class PageController {
     @Headers('x-tenant-id') tenantIdHeader: string
   ) {
     const tenantId = this.resolveTenantId(req, tenantIdHeader);
-    console.log('📄 Finding all pages for tenant:', tenantId);
     return this.pageService.findAll(tenantId);
   }
 
@@ -52,11 +47,13 @@ export class PageController {
   findBySlug(
     @Request() req: any,
     @Headers('x-tenant-id') tenantIdHeader: string,
-    @Param('slug') slug: string
+    @Param('slug') slug: string,
+    @Query('preview') preview?: string
   ) {
     const tenantId = this.resolveTenantId(req, tenantIdHeader);
-    console.log('📄 Finding page by slug:', slug, 'for tenant:', tenantId);
-    return this.pageService.findBySlug(tenantId, slug);
+    // Check if preview mode is requested (for authenticated users)
+    const isPreview = preview === 'true' && req.user;
+    return this.pageService.findBySlug(tenantId, slug, isPreview);
   }
 
   @Public()
@@ -67,7 +64,6 @@ export class PageController {
     @Param('id') id: string
   ) {
     const tenantId = this.resolveTenantId(req, tenantIdHeader);
-    console.log('📄 Finding page by id:', id, 'for tenant:', tenantId);
     return this.pageService.findOne(tenantId, id);
   }
 

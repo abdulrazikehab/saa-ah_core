@@ -48,11 +48,11 @@ export class TenantSyncService {
       
       this.logger.log(`✅ Tenant created successfully: ${tenantId}`);
       return true;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`❌ Failed to ensure tenant exists: ${tenantId}`, error);
       
       // If it's a unique constraint error, the tenant might have been created by another request
-      if (error === 'P2002') {
+      if (error?.code === 'P2002') {
         this.logger.log(`⚠️ Tenant ${tenantId} was created by another request`);
         return true;
       }

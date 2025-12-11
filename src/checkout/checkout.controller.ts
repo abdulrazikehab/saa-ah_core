@@ -12,6 +12,7 @@ import {
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CheckoutService } from './checkout.service';
 import { CartService } from '../cart/cart.service'; // Import CartService
+import { GuestCheckoutService } from '../guest-checkout/guest-checkout.service';
 import { AuthenticatedRequest } from '../types/request.types';
 
 @UseGuards(JwtAuthGuard)
@@ -20,6 +21,7 @@ export class CheckoutController {
   constructor(
     private checkoutService: CheckoutService,
     private cartService: CartService, // Inject CartService
+    private guestCheckoutService: GuestCheckoutService,
   ) {}
 
   private ensureTenantId(tenantId: string | undefined): string {
@@ -60,6 +62,21 @@ export class CheckoutController {
       undefined, // notes
       req.ip || req.socket.remoteAddress || '',
     );
+  }
+
+  @Get('settings')
+  async getCheckoutSettings(@Request() req: AuthenticatedRequest) {
+    const tenantId = req.user?.tenantId || req.tenantId || 'default';
+    return this.guestCheckoutService.getCheckoutSettings(tenantId);
+  }
+
+  @Put('settings')
+  async updateCheckoutSettings(
+    @Request() req: AuthenticatedRequest,
+    @Body() settings: any,
+  ) {
+    const tenantId = req.user?.tenantId || req.tenantId || 'default';
+    return this.guestCheckoutService.updateCheckoutSettings(tenantId, settings);
   }
 
   // ... rest of the methods

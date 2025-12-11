@@ -70,7 +70,7 @@ export class TenantService {
 
   async resolveTenantId(domain: string): Promise<string | null> {
     // 1. Check if it's a subdomain of localhost or the main domain
-    // We assume the domain passed here is the full hostname (e.g. "store.localhost" or "store.blackbox.com")
+    // We assume the domain passed here is the full hostname (e.g. "store.localhost" or "store.saa'ah.com")
     
     let subdomain = '';
     

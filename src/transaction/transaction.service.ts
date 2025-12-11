@@ -254,48 +254,72 @@ export class TransactionService {
    * Get subscription info for tenant
    */
   async getSubscriptionInfo(tenantId: string) {
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: {
-        plan: true,
-        createdAt: true,
-        settings: true,
-      },
-    });
+    try {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: {
+          plan: true,
+          createdAt: true,
+          settings: true,
+        },
+      });
 
-    if (!tenant) {
-      throw new Error('Tenant not found');
+      if (!tenant) {
+        // Return default subscription info if tenant not found
+        return {
+          plan: 'STARTER',
+          monthlyPrice: 0,
+          features: [],
+          nextBillingDate: new Date(),
+          daysUntilBilling: 0,
+          shouldAlert: false,
+          billingHistory: [],
+        };
+      }
+
+      // Calculate next billing date (assuming monthly billing)
+      const nextBillingDate = new Date(tenant.createdAt);
+      const today = new Date();
+      
+      while (nextBillingDate < today) {
+        nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+      }
+
+      const daysUntilBilling = Math.ceil(
+        (nextBillingDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+      );
+
+      // Plan pricing
+      const planPricing: Record<string, { monthly: number; features: string[] }> = {
+        STARTER: { monthly: 99, features: ['Up to 100 products', 'Basic analytics', 'Email support'] },
+        PROFESSIONAL: { monthly: 299, features: ['Unlimited products', 'Advanced analytics', 'Priority support', 'Custom domain'] },
+        ENTERPRISE: { monthly: 999, features: ['Everything in Pro', 'Dedicated account manager', 'Custom integrations', 'SLA'] },
+      };
+
+      const plan = tenant.plan || 'STARTER';
+      const currentPlan = planPricing[plan] || planPricing.STARTER;
+
+      return {
+        plan,
+        monthlyPrice: currentPlan.monthly,
+        features: currentPlan.features,
+        nextBillingDate,
+        daysUntilBilling,
+        shouldAlert: daysUntilBilling <= 7,
+        billingHistory: [], // TODO: Implement billing history
+      };
+    } catch (error) {
+      console.error('Error fetching subscription info:', error);
+      // Return default subscription info on error
+      return {
+        plan: 'STARTER',
+        monthlyPrice: 0,
+        features: [],
+        nextBillingDate: new Date(),
+        daysUntilBilling: 0,
+        shouldAlert: false,
+        billingHistory: [],
+      };
     }
-
-    // Calculate next billing date (assuming monthly billing)
-    const nextBillingDate = new Date(tenant.createdAt);
-    const today = new Date();
-    
-    while (nextBillingDate < today) {
-      nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
-    }
-
-    const daysUntilBilling = Math.ceil(
-      (nextBillingDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
-    );
-
-    // Plan pricing
-    const planPricing = {
-      STARTER: { monthly: 99, features: ['Up to 100 products', 'Basic analytics', 'Email support'] },
-      PROFESSIONAL: { monthly: 299, features: ['Unlimited products', 'Advanced analytics', 'Priority support', 'Custom domain'] },
-      ENTERPRISE: { monthly: 999, features: ['Everything in Pro', 'Dedicated account manager', 'Custom integrations', 'SLA'] },
-    };
-
-    const currentPlan = planPricing[tenant.plan];
-
-    return {
-      plan: tenant.plan,
-      monthlyPrice: currentPlan.monthly,
-      features: currentPlan.features,
-      nextBillingDate,
-      daysUntilBilling,
-      shouldAlert: daysUntilBilling <= 7,
-      billingHistory: [], // TODO: Implement billing history
-    };
   }
 }

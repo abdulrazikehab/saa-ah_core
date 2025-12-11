@@ -134,7 +134,7 @@ export class MasterAdminController {
   async createPaymentGateway(
     @Body()
     data: {
-      tenantId: string;
+      tenantId?: string | null;
       provider: string;
       name: string;
       credentials?: any;
@@ -272,6 +272,19 @@ export class MasterAdminController {
     return this.masterAdminService.getAuditLogs({
       userId,
       action,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
+  }
+
+  // ==================== ERROR LOGS ====================
+
+  @Get('error-logs')
+  async getErrorLogs(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.masterAdminService.getErrorLogs({
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
     });

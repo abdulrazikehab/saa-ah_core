@@ -25,10 +25,6 @@ export class ThemeController {
     @Headers('x-tenant-id') tenantIdHeader: string
   ) {
     const tenantId = req.user?.tenantId || req.tenantId || tenantIdHeader || process.env.DEFAULT_TENANT_ID || 'default';
-    console.log('🎨 Theme findAll - Tenant ID:', tenantId);
-    console.log('🎨 Request user:', req.user);
-    console.log('🎨 Request tenantId:', req.tenantId);
-    console.log('🎨 Header x-tenant-id:', tenantIdHeader);
     // This will automatically create default themes if none exist
     return this.themeService.ensureDefaultThemes(tenantId);
   }

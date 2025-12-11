@@ -2,6 +2,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantSyncService } from '../tenant/tenant-sync.service';
+import { SupplierInventoryService } from '../supplier/supplier-inventory.service';
 
 export interface CreateOrderDto {
   customerEmail: string;
@@ -48,6 +49,7 @@ export class OrderService {
   constructor(
     private prisma: PrismaService,
     private tenantSyncService: TenantSyncService,
+    private supplierInventoryService: SupplierInventoryService,
   ) {}
 
   async createOrder(tenantId: string, cartId: string, orderData: CreateOrderDto): Promise<OrderResponseDto> {
@@ -76,16 +78,55 @@ export class OrderService {
       throw new BadRequestException('Cart is empty');
     }
 
-    // Calculate total and validate inventory
+    // Calculate total and validate inventory with supplier sync
     let totalAmount = 0;
     const inventoryChecks: { variantId: any; currentQuantity: any; reservedQuantity: any; }[] = [];
+    const itemsForValidation = [];
 
     for (const item of cart.cartItems) {
       const price = item.productVariant?.price || item.product.price;
       const itemTotal = price * item.quantity;
       totalAmount += itemTotal;
 
-      // Check inventory for variants
+      // Prepare items for supplier validation
+      if (item.productVariant) {
+        itemsForValidation.push({
+          productId: item.product.id,
+          variantId: item.productVariant.id,
+          quantity: item.quantity,
+        });
+      }
+    }
+
+    // Validate inventory with supplier sync
+    const inventoryValid = await this.supplierInventoryService.validateInventoryBeforeOrder(
+      tenantId,
+      itemsForValidation
+    );
+
+    if (!inventoryValid) {
+      throw new BadRequestException('Insufficient inventory. Please check product availability.');
+    }
+
+    // Re-fetch cart items after potential supplier sync
+    const updatedCart = await this.prisma.cart.findFirst({
+      where: { id: cartId, tenantId },
+      include: {
+        cartItems: {
+          include: {
+            product: true,
+            productVariant: true,
+          },
+        },
+      },
+    });
+
+    if (!updatedCart) {
+      throw new NotFoundException('Cart not found');
+    }
+
+    // Build inventory checks with updated quantities
+    for (const item of updatedCart.cartItems) {
       if (item.productVariant) {
         if (item.productVariant.inventoryQuantity < item.quantity) {
           throw new BadRequestException(

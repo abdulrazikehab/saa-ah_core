@@ -14,21 +14,37 @@ export class ReportController {
 
   @Get('overview')
   async overview(@Request() req: any) {
-    return this.reports.overview(req.user.tenantId);
+    const tenantId = req.user?.tenantId || req.user?.id || req.tenantId;
+    if (!tenantId) {
+      return { totalOrders: 0, revenue: 0, totalTransactions: 0, activityCount: 0 };
+    }
+    return this.reports.overview(tenantId);
   }
 
   @Get('products')
   async getProductReport(@Request() req: any) {
-    return this.reports.getProductReport(req.user.tenantId);
+    const tenantId = req.user?.tenantId || req.user?.id || req.tenantId;
+    if (!tenantId) {
+      return [];
+    }
+    return this.reports.getProductReport(tenantId);
   }
 
   @Get('customers')
   async getCustomerReport(@Request() req: any) {
-    return this.reports.getCustomerReport(req.user.tenantId);
+    const tenantId = req.user?.tenantId || req.user?.id || req.tenantId;
+    if (!tenantId) {
+      return [];
+    }
+    return this.reports.getCustomerReport(tenantId);
   }
 
   @Get('payments')
   async getPaymentReport(@Request() req: any) {
-    return this.reports.getPaymentReport(req.user.tenantId);
+    const tenantId = req.user?.tenantId || req.user?.id || req.tenantId;
+    if (!tenantId) {
+      return [];
+    }
+    return this.reports.getPaymentReport(tenantId);
   }
 }

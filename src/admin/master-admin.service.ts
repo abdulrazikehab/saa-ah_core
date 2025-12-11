@@ -375,27 +375,34 @@ export class MasterAdminService {
   // ==================== PAYMENT GATEWAY MANAGEMENT ====================
 
   async getPaymentGateways(tenantId?: string) {
-    const where = tenantId ? { tenantId } : {};
+    // If no tenantId specified, return only admin-created gateways (where tenantId is null)
+    // If tenantId is specified, return gateways for that tenant
+    const where = tenantId 
+      ? { tenantId } 
+      : { tenantId: null }; // Admin-created global gateways
     
-    return this.prisma.paymentMethod.findMany({
+    const gateways = await this.prisma.paymentMethod.findMany({
       where,
       include: {
         tenant: { select: { id: true, name: true, subdomain: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    return { gateways };
   }
 
   async createPaymentGateway(data: {
-    tenantId: string;
+    tenantId?: string | null;
     provider: string;
     name: string;
     credentials?: any;
     settings?: any;
   }) {
+    // Admin-created gateways should have tenantId as null (global gateways)
     const gateway = await this.prisma.paymentMethod.create({
       data: {
-        tenantId: data.tenantId,
+        tenantId: data.tenantId || null, // null for admin-created global gateways
         provider: data.provider as any,
         name: data.name,
         credentials: data.credentials,
@@ -404,7 +411,7 @@ export class MasterAdminService {
       },
     });
 
-    this.logger.log(`Payment gateway created: ${gateway.id} - ${gateway.name}`);
+    this.logger.log(`Payment gateway created: ${gateway.id} - ${gateway.name} (${data.tenantId ? 'tenant-specific' : 'global'})`);
     return gateway;
   }
 
@@ -688,68 +695,173 @@ export class MasterAdminService {
     };
   }
 
-  // Get true audit logs from AuditLog table
+  // Get audit logs from ActivityLog table (core backend uses activityLog)
   async getAuditLogs(filters?: {
     userId?: string;
     action?: string;
     page?: number;
     limit?: number;
   }) {
-    const page = filters?.page || 1;
-    const limit = filters?.limit || 50;
-    const skip = (page - 1) * limit;
+    try {
+      const page = filters?.page || 1;
+      const limit = filters?.limit || 50;
+      const skip = (page - 1) * limit;
 
-    const where: any = {};
-    if (filters?.userId) where.userId = filters.userId;
-    if (filters?.action) where.action = { contains: filters.action };
-
-    const [logs, total] = await Promise.all([
-      this.prisma.auditLog.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          user: {
-            select: { email: true, name: true }
-          },
-          tenant: {
-            select: { name: true, subdomain: true }
-          }
-        }
-      }),
-      this.prisma.auditLog.count({ where }),
-    ]);
-
-    const formattedLogs = logs.map(log => {
-      let metadata: any = log.metadata;
-      if (typeof metadata === 'string') {
-        try { metadata = JSON.parse(metadata); } catch (e) { metadata = {}; }
-      }
-      return {
-        id: log.id,
-        action: log.action,
-        resourceType: log.resourceType,
-        resourceId: log.resourceId,
-        details: `${log.action} on ${log.resourceType || 'system'}`,
-        createdAt: log.createdAt,
-        user: { email: log.user?.email || 'System', name: log.user?.name },
-        tenant: log.tenant,
-        oldValues: log.oldValues,
-        newValues: log.newValues,
-        metadata,
+      const where: any = {
+        NOT: { action: 'ERROR' }, // Exclude ERROR actions (they're in error logs)
       };
-    });
+      if (filters?.userId) where.actorId = filters.userId;
+      if (filters?.action) {
+        where.action = { contains: filters.action };
+      }
 
-    return {
-      logs: formattedLogs,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
+      if (!this.prisma.activityLog) {
+        return {
+          logs: [],
+          pagination: { total: 0, page, limit, totalPages: 0 },
+        };
+      }
+
+      const [logs, total] = await Promise.all([
+        this.prisma.activityLog.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            tenant: {
+              select: { name: true, subdomain: true }
+            }
+          }
+        }),
+        this.prisma.activityLog.count({ where }),
+      ]);
+
+      const formattedLogs = logs.map((log: any) => {
+        const details = typeof log.details === 'string' 
+          ? (() => { try { return JSON.parse(log.details); } catch { return {}; } })()
+          : log.details || {};
+        
+        return {
+          id: log.id,
+          action: log.action,
+          resourceType: details.resourceType || details.resource || 'SYSTEM',
+          resourceId: log.targetId || details.resourceId || '',
+          details: typeof details === 'object' && details.message 
+            ? details.message 
+            : `${log.action} on ${details.resourceType || details.resource || 'system'}`,
+          createdAt: log.createdAt,
+          user: { 
+            email: details.userEmail || 'System', 
+            name: details.userName || details.actorName 
+          },
+          tenant: log.tenant,
+          metadata: details,
+        };
+      });
+
+      return {
+        logs: formattedLogs,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      };
+    } catch (error) {
+      this.logger.error('Failed to fetch audit logs from core database:', error);
+      return {
+        logs: [],
+        pagination: {
+          total: 0,
+          page: filters?.page || 1,
+          limit: filters?.limit || 50,
+          totalPages: 0,
+        },
+      };
+    }
+  }
+
+  // Get error logs from ActivityLog table where action='ERROR'
+  async getErrorLogs(filters?: {
+    page?: number;
+    limit?: number;
+  }) {
+    try {
+      const page = filters?.page || 1;
+      const limit = filters?.limit || 50;
+      const skip = (page - 1) * limit;
+
+      const where: any = {
+        action: 'ERROR',
+      };
+
+      if (!this.prisma.activityLog) {
+        return {
+          logs: [],
+          pagination: { total: 0, page, limit, totalPages: 0 },
+        };
+      }
+
+      const [logs, total] = await Promise.all([
+        this.prisma.activityLog.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            tenant: {
+              select: { name: true, subdomain: true }
+            }
+          }
+        }),
+        this.prisma.activityLog.count({ where }),
+      ]);
+
+      const formattedLogs = logs.map((log: any) => {
+        const details = typeof log.details === 'string' 
+          ? (() => { try { return JSON.parse(log.details); } catch { return {}; } })()
+          : log.details || {};
+        
+        return {
+          id: log.id,
+          action: 'ERROR',
+          resourceType: details.resourceType || 'SYSTEM',
+          resourceId: log.targetId || details.statusCode || '',
+          severity: details.severity || 'HIGH',
+          details: details.message || 'System error',
+          createdAt: log.createdAt,
+          user: { 
+            email: details.userEmail || 'System', 
+            name: details.userName 
+          },
+          tenant: log.tenant,
+          metadata: details,
+        };
+      });
+
+      return {
+        logs: formattedLogs,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      };
+    } catch (error) {
+      this.logger.error('Failed to fetch error logs from core database:', error);
+      return {
+        logs: [],
+        pagination: {
+          total: 0,
+          page: filters?.page || 1,
+          limit: filters?.limit || 50,
+          totalPages: 0,
+        },
+      };
+    }
   }
   // ==================== CUSTOMER MANAGEMENT ====================
 

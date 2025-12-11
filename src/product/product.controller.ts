@@ -56,19 +56,13 @@ export class ProductController {
     @Query('isActive') isActive?: boolean,
     @Query('market') market?: boolean,
   ) {
-    console.log('🎯 ProductController.findAll() called');
-    console.log('🎯 Query params:', { page, limit, categoryId, search, minPrice, maxPrice, isActive, market });
-    
     // If market=true, fetch from default tenant (Master Catalog)
     // Otherwise use the authenticated user's tenant
     let targetTenantId = req.tenantId || tenantIdHeader || process.env.DEFAULT_TENANT_ID || 'default';
     
     if (market) {
       targetTenantId = 'default';
-      console.log('🌍 Fetching from Market (default tenant)');
     }
-
-    console.log('🎯 Using tenantId:', targetTenantId);
     
     // Build filters object
     const filters: any = {};
@@ -77,8 +71,6 @@ export class ProductController {
     if (minPrice !== undefined) filters.minPrice = Number(minPrice);
     if (maxPrice !== undefined) filters.maxPrice = Number(maxPrice);
     if (isActive !== undefined) filters.isActive = String(isActive) === 'true';
-    
-    console.log('🎯 Filters:', filters);
     
     return this.productService.findAll(targetTenantId, page, limit, filters);
   }

@@ -40,6 +40,58 @@ export class PaymentService {
         throw new NotFoundException('Order not found or already processed');
       }
 
+      // Check for large payment amount - require manual review
+      const orderAmount = Number(order.totalAmount);
+      const largePaymentThreshold = parseFloat(process.env.LARGE_PAYMENT_THRESHOLD || '5000'); // Default 5000 SAR
+      const requiresReview = orderAmount >= largePaymentThreshold;
+
+      if (requiresReview) {
+        // Update order status to CONFIRMED but add note for review
+        await this.prisma.order.update({
+          where: { id: orderId },
+          data: {
+            status: 'CONFIRMED',
+            notes: `${order.notes ? order.notes + '\n' : ''}⚠️ Large payment (${orderAmount} SAR) - requires manual verification before processing.`,
+          },
+        });
+
+        // Create transaction with HOLD status
+        await this.prisma.transaction.create({
+          data: {
+            tenantId,
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            amount: orderAmount,
+            currency: 'SAR',
+            status: 'PENDING', // Hold status
+            paymentProvider: 'HYPERPAY',
+            customerEmail: order.customerEmail,
+            customerName: order.customerName,
+            description: `Large payment on hold - requires verification`,
+            metadata: {
+              requiresReview: true,
+              reviewReason: 'Large payment amount',
+              threshold: largePaymentThreshold,
+            },
+          },
+        });
+
+        this.logger.warn(`Large payment detected for order ${order.orderNumber}: ${orderAmount} SAR - Payment held for review`);
+
+        return {
+          success: true,
+          requiresReview: true,
+          message: `Your payment of ${orderAmount} SAR requires manual verification. Our team will review your order and process the payment within 24 hours.`,
+          order: {
+            id: order.id,
+            orderNumber: order.orderNumber,
+            totalAmount: order.totalAmount,
+            currency: 'SAR',
+            status: 'CONFIRMED',
+          },
+        };
+      }
+
       // Get active payment method for tenant
       const tenantPaymentMethod = await this.prisma.paymentMethod.findFirst({
         where: {
@@ -53,11 +105,11 @@ export class PaymentService {
         throw new BadRequestException('No active payment method configured');
       }
 
-      // Create payment session with HyperPay
+      // Create payment session with HyperPay for normal payments
       const session = await this.hyperpayService.createCheckoutSession(
         tenantId,
         orderId,
-        Number(order.totalAmount),
+        orderAmount,
         'SAR',
         {
           email: order.customerEmail,
@@ -67,6 +119,7 @@ export class PaymentService {
 
       return {
         success: true,
+        requiresReview: false,
         checkoutId: session.id,
         redirectUrl: session.redirectUrl,
         order: {

@@ -84,9 +84,16 @@ export class PageService {
     return page;
   }
 
-  async findBySlug(tenantId: string, slug: string) {
+  async findBySlug(tenantId: string, slug: string, includeUnpublished: boolean = false) {
+    const where: any = { slug, tenantId };
+    
+    // For public access, only return published pages unless explicitly requested
+    if (!includeUnpublished) {
+      where.isPublished = true;
+    }
+    
     const page = await this.prisma.page.findFirst({
-      where: { slug, tenantId },
+      where,
     });
 
     if (!page) {
