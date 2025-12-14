@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, Headers } from '@nestjs/common';
 import { BrandService, CreateBrandDto, UpdateBrandDto } from './brand.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthenticatedRequest } from '../types/request.types';
+import { Public } from '../auth/public.decorator';
 
 @UseGuards(JwtAuthGuard)
 @Controller('brands')
@@ -14,9 +15,14 @@ export class BrandController {
     return this.brandService.create(tenantId, data);
   }
 
+  @Public()
   @Get()
-  async findAll(@Request() req: AuthenticatedRequest) {
-    const tenantId = req.user?.tenantId || req.user?.id;
+  async findAll(
+    @Request() req: any,
+    @Headers('x-tenant-id') tenantIdHeader?: string
+  ) {
+    // Support both authenticated and public access
+    const tenantId = req.user?.tenantId || req.user?.id || req.tenantId || tenantIdHeader || process.env.DEFAULT_TENANT_ID;
     if (!tenantId) {
       throw new Error('Tenant ID is required');
     }

@@ -87,6 +87,59 @@ export class TenantController {
       throw new BadRequestException(error.message || 'Failed to create market. Please try again.');
     }
 
+    // Initialize default SiteConfig for the new market
+    try {
+      await this.prisma.siteConfig.create({
+        data: {
+          tenantId,
+          header: {
+            logo: null,
+            storeName: body.name,
+            menuItems: [
+              { label: 'Home', href: '/' },
+              { label: 'Products', href: '/products' },
+              { label: 'About', href: '/about' },
+              { label: 'Contact', href: '/contact' },
+            ],
+          },
+          footer: {
+            copyright: `© ${new Date().getFullYear()} ${body.name}. All rights reserved.`,
+            socialLinks: [],
+            links: [],
+          },
+          background: {
+            type: 'solid',
+            color: '#ffffff',
+          },
+          language: 'en',
+          theme: 'light',
+          paymentMethods: [],
+          hyperpayConfig: {},
+        },
+      });
+    } catch (error) {
+      console.error('Failed to create site config:', error);
+      // Non-fatal: continue even if site config creation fails
+    }
+
+    // Store market data in tenant settings
+    try {
+      await this.prisma.tenant.update({
+        where: { id: tenantId },
+        data: {
+          settings: {
+            storeName: body.name,
+            storeDescription: body.description,
+            templateId: body.template,
+            customDomain: body.customDomain,
+            createdAt: new Date().toISOString(),
+          },
+        },
+      });
+    } catch (error) {
+      console.error('Failed to update tenant settings:', error);
+    }
+
     // If template is selected, initialize the Home page
     if (body.template) {
         try {
@@ -116,6 +169,76 @@ export class TenantController {
             console.error('Failed to apply template:', error);
             // Don't fail the whole setup if template fails, just log it
         }
+    } else {
+      // Create default Home page if no template selected
+      try {
+        await this.pageService.create(tenantId, {
+          title: 'Home',
+          slug: 'home',
+          content: [
+            {
+              id: 'hero',
+              type: 'hero',
+              content: {
+                title: `Welcome to ${body.name}`,
+                subtitle: body.description || 'Discover our amazing products',
+                buttonText: 'Shop Now',
+                buttonLink: '/products',
+              },
+            },
+          ],
+          isPublished: true,
+          seoTitle: body.name,
+          seoDesc: body.description || `Welcome to ${body.name}`,
+        });
+      } catch (error) {
+        console.error('Failed to create default home page:', error);
+      }
+    }
+
+    // Create default About and Contact pages
+    try {
+      await this.pageService.create(tenantId, {
+        title: 'About Us',
+        slug: 'about',
+        content: [
+          {
+            id: 'about-content',
+            type: 'text',
+            content: {
+              title: `About ${body.name}`,
+              text: body.description || `Welcome to ${body.name}. We are dedicated to providing the best products and services to our customers.`,
+            },
+          },
+        ],
+        isPublished: true,
+        seoTitle: `About - ${body.name}`,
+        seoDesc: `Learn more about ${body.name}`,
+      });
+    } catch (error) {
+      // Ignore if page already exists
+    }
+
+    try {
+      await this.pageService.create(tenantId, {
+        title: 'Contact',
+        slug: 'contact',
+        content: [
+          {
+            id: 'contact-content',
+            type: 'contact',
+            content: {
+              title: 'Contact Us',
+              subtitle: 'Get in touch with us',
+            },
+          },
+        ],
+        isPublished: true,
+        seoTitle: `Contact - ${body.name}`,
+        seoDesc: `Contact ${body.name}`,
+      });
+    } catch (error) {
+      // Ignore if page already exists
     }
     
     return {

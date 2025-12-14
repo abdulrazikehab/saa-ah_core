@@ -921,6 +921,10 @@ model Partner {
   nameAr          String?
   email           String         @unique
   phone           String?
+  logo            String?        // Partner logo URL
+  description     String?        @db.Text // Partner description
+  descriptionAr   String?        @db.Text // Partner description in Arabic
+  website         String?        // Partner website URL
   commissionType  CommissionType @default(PERCENTAGE)
   commissionValue Decimal
   isActive        Boolean        @default(true)

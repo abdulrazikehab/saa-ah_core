@@ -36,14 +36,18 @@ export class ActionLoggingInterceptor implements NestInterceptor {
             (typeof response === 'object' && 'statusCode' in response && response.statusCode >= 200 && response.statusCode < 300)
           );
 
-          if (isSuccess && this.prisma.activityLog) {
+          // Get tenant ID from user, request context, or header
+          const tenantId = user?.tenantId || (request as any).tenantId || request.headers['x-tenant-id'] as string;
+          
+          // Only log if we have a valid tenant ID (foreign key constraint requires existing tenant)
+          if (isSuccess && this.prisma.activityLog && tenantId && tenantId !== 'system') {
             // Log all successful actions (all methods including GET)
             await this.prisma.activityLog.create({
               data: {
-                tenantId: user?.tenantId || request.headers['x-tenant-id'] as string || 'system',
-                actorId: user?.id || user?.sub || 'system',
+                tenantId,
+                actorId: user?.id || user?.sub || 'anonymous',
                 action: `${method} ${url.split('?')[0]}`,
-                targetId: params?.id || query?.id || body?.id || 'system',
+                targetId: params?.id || query?.id || body?.id || null,
                 details: {
                   method,
                   url,

@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Headers, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Headers, Query, ForbiddenException } from '@nestjs/common';
 import { PageService } from './page.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { TenantRequiredGuard } from '../guard/tenant-required.guard';
 import { RolesGuard } from '../guard/roles.guard';
 import { Roles } from '../decorator/roles.decorator';
 import { UserRole } from '../types/user-role.enum';
@@ -27,8 +28,12 @@ export class PageController {
   }
 
   @Post()
+  @UseGuards(TenantRequiredGuard)
   create(@Request() req: any, @Body() createPageDto: any) {
     const tenantId = this.resolveTenantId(req);
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new ForbiddenException('You must set up a market first before creating pages.');
+    }
     return this.pageService.create(tenantId, createPageDto);
   }
 
@@ -68,24 +73,28 @@ export class PageController {
   }
 
   @Patch(':id')
+  @UseGuards(TenantRequiredGuard)
   update(@Request() req: any, @Param('id') id: string, @Body() updatePageDto: any) {
     const tenantId = this.resolveTenantId(req);
     return this.pageService.update(tenantId, id, updatePageDto);
   }
 
   @Get(':id/history')
+  @UseGuards(TenantRequiredGuard)
   getHistory(@Request() req: any, @Param('id') id: string) {
     const tenantId = this.resolveTenantId(req);
     return this.pageService.getHistory(tenantId, id);
   }
 
   @Post(':id/restore/:historyId')
+  @UseGuards(TenantRequiredGuard)
   restoreVersion(@Request() req: any, @Param('id') id: string, @Param('historyId') historyId: string) {
     const tenantId = this.resolveTenantId(req);
     return this.pageService.restoreVersion(tenantId, id, historyId);
   }
 
   @Delete(':id')
+  @UseGuards(TenantRequiredGuard)
   remove(@Request() req: any, @Param('id') id: string) {
     const tenantId = this.resolveTenantId(req);
     return this.pageService.remove(tenantId, id);

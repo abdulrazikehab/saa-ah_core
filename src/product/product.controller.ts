@@ -17,6 +17,7 @@ import { ProductService } from './product.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { TenantRequiredGuard } from '../guard/tenant-required.guard';
 import { Public } from '../auth/public.decorator';
 import { AuthenticatedRequest } from '../types/request.types';
 
@@ -33,6 +34,7 @@ export class ProductController {
   }
 
   @Post()
+  @UseGuards(TenantRequiredGuard)
   create(
     @Request() req: AuthenticatedRequest, 
     @Body() createProductDto: CreateProductDto,
@@ -87,6 +89,7 @@ export class ProductController {
   }
 
   @Patch(':id')
+  @UseGuards(TenantRequiredGuard)
   update(
     @Request() req: AuthenticatedRequest,
     @Param('id') id: string,
@@ -97,12 +100,14 @@ export class ProductController {
   }
 
   @Delete(':id')
+  @UseGuards(TenantRequiredGuard)
   remove(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
     const tenantId = this.ensureTenantId(req.tenantId);
     return this.productService.remove(tenantId, id);
   }
 
   @Patch('variants/:variantId/inventory')
+  @UseGuards(TenantRequiredGuard)
   updateInventory(
     @Request() req: AuthenticatedRequest,
     @Param('variantId') variantId: string,

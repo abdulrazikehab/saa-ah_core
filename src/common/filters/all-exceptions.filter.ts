@@ -40,11 +40,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
     // Save error to database using activityLog
     try {
       const user = (request as any).user;
-      if (this.prisma.activityLog) {
+      // Get tenant ID from user, request context, or header
+      const tenantId = user?.tenantId || (request as any).tenantId || request.headers['x-tenant-id'] as string;
+      
+      // Only log if we have a valid tenant ID (foreign key constraint requires existing tenant)
+      if (this.prisma.activityLog && tenantId && tenantId !== 'system') {
         await this.prisma.activityLog.create({
           data: {
-            tenantId: user?.tenantId || request.headers['x-tenant-id'] as string || 'system',
-            actorId: user?.id || user?.sub || 'system',
+            tenantId,
+            actorId: user?.id || user?.sub || 'anonymous',
             action: 'ERROR',
             targetId: status.toString(),
             details: {

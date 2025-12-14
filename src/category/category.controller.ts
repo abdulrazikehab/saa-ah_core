@@ -13,6 +13,7 @@ import {
   ForbiddenException
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { TenantRequiredGuard } from '../guard/tenant-required.guard';
 import { Public } from '../auth/public.decorator';
 import { AuthenticatedRequest } from '../types/request.types';
 import { PrismaService } from '../prisma/prisma.service';
@@ -100,6 +101,7 @@ export class CategoryController {
   }
 
   @Post()
+  @UseGuards(TenantRequiredGuard)
   async createCategory(
     @Request() req: AuthenticatedRequest,
     @Body() body: CreateCategoryDto,
@@ -200,6 +202,7 @@ export class CategoryController {
   }
 
   @Patch(':id')
+  @UseGuards(TenantRequiredGuard)
   async updateCategory(
     @Request() req: AuthenticatedRequest,
     @Param('id') id: string,
@@ -257,6 +260,7 @@ export class CategoryController {
   }
 
   @Delete(':id')
+  @UseGuards(TenantRequiredGuard)
   async deleteCategory(
     @Request() req: AuthenticatedRequest,
     @Param('id') id: string,

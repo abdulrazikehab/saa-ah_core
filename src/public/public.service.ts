@@ -19,6 +19,10 @@ export class PublicService {
           id: true,
           name: true,
           nameAr: true,
+          logo: true,
+          description: true,
+          descriptionAr: true,
+          website: true,
           // Only return public information
           // Don't expose email, phone, commission details
         },
@@ -26,16 +30,15 @@ export class PublicService {
       });
 
       // Map to a format suitable for the landing page
-      // Add logo paths based on partner name (stored in public folder)
       return {
         partners: partners.map((partner) => ({
           id: partner.id,
           name: partner.name,
           nameAr: partner.nameAr || partner.name,
-          // Generate logo path based on partner name
-          logo: this.getPartnerLogoPath(partner.name),
-          description: this.getPartnerDescription(partner.name),
-          descriptionAr: this.getPartnerDescriptionAr(partner.name),
+          logo: partner.logo || `/partners/${partner.name.toLowerCase().replace(/\s+/g, '-')}-logo.png`,
+          description: partner.description || '',
+          descriptionAr: partner.descriptionAr || partner.description || '',
+          website: partner.website,
         })),
       };
     } catch (error) {

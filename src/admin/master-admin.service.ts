@@ -375,11 +375,11 @@ export class MasterAdminService {
   // ==================== PAYMENT GATEWAY MANAGEMENT ====================
 
   async getPaymentGateways(tenantId?: string) {
-    // If no tenantId specified, return only admin-created gateways (where tenantId is null)
-    // If tenantId is specified, return gateways for that tenant
+    // If no tenantId specified, return all gateways (for admin view)
+    // If tenantId is specified, return gateways for that tenant + default gateways
     const where = tenantId 
-      ? { tenantId } 
-      : { tenantId: null }; // Admin-created global gateways
+      ? { OR: [{ tenantId }, { tenantId: 'default' }] }
+      : {}; // Return all gateways for admin view
     
     const gateways = await this.prisma.paymentMethod.findMany({
       where,
@@ -399,10 +399,11 @@ export class MasterAdminService {
     credentials?: any;
     settings?: any;
   }) {
-    // Admin-created gateways should have tenantId as null (global gateways)
+    // Admin-created gateways use 'default' tenant for global gateways
+    // This allows them to be shared across all tenants
     const gateway = await this.prisma.paymentMethod.create({
       data: {
-        tenantId: data.tenantId || null, // null for admin-created global gateways
+        tenantId: data.tenantId || 'default', // 'default' for admin-created global gateways
         provider: data.provider as any,
         name: data.name,
         credentials: data.credentials,
@@ -411,7 +412,7 @@ export class MasterAdminService {
       },
     });
 
-    this.logger.log(`Payment gateway created: ${gateway.id} - ${gateway.name} (${data.tenantId ? 'tenant-specific' : 'global'})`);
+    this.logger.log(`Payment gateway created: ${gateway.id} - ${gateway.name} (${data.tenantId || 'global'})`);
     return gateway;
   }
 
@@ -505,6 +506,10 @@ export class MasterAdminService {
     nameAr?: string;
     email: string;
     phone?: string;
+    logo?: string;
+    description?: string;
+    descriptionAr?: string;
+    website?: string;
     commissionType: 'PERCENTAGE' | 'FIXED';
     commissionValue: number;
     allowedFeatures?: string[];
@@ -524,6 +529,10 @@ export class MasterAdminService {
         nameAr: data.nameAr,
         email: data.email,
         phone: data.phone,
+        logo: data.logo,
+        description: data.description,
+        descriptionAr: data.descriptionAr,
+        website: data.website,
         commissionType: data.commissionType as any,
         commissionValue: data.commissionValue,
         allowedFeatures: data.allowedFeatures || [],
@@ -539,6 +548,10 @@ export class MasterAdminService {
     name?: string;
     nameAr?: string;
     phone?: string;
+    logo?: string;
+    description?: string;
+    descriptionAr?: string;
+    website?: string;
     commissionType?: 'PERCENTAGE' | 'FIXED';
     commissionValue?: number;
     allowedFeatures?: string[];
