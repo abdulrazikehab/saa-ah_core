@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  shadowDatabaseUrl = "postgresql://saeaa_user:sqwz2025@209.42.23.68:5432/saeaa?schema=core"
 }
 
 model Tenant {
