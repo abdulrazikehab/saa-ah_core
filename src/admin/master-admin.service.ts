@@ -1262,9 +1262,10 @@ export class MasterAdminService {
 
       this.logger.warn('Database reset performed by Master Admin');
       return { success: true, message: 'All data has been cleared' };
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error('Failed to reset database', error);
-      throw new BadRequestException('Failed to reset database: ' + error.message);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new BadRequestException('Failed to reset database: ' + errorMessage);
     }
   }
 }

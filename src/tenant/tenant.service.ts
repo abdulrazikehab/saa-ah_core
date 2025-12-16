@@ -69,16 +69,56 @@ export class TenantService {
   }
 
   async resolveTenantId(domain: string): Promise<string | null> {
-    // 1. Check if it's a subdomain of localhost or the main domain
-    // We assume the domain passed here is the full hostname (e.g. "store.localhost" or "store.saa'ah.com")
+    // Normalize domain (remove protocol, port, trailing slashes)
+    const normalizedDomain = domain.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '').split(':')[0];
     
+    // 1. First check if it's a custom domain (including saeaa.com as main domain)
+    const customDomain = await this.prisma.customDomain.findFirst({
+      where: { 
+        domain: normalizedDomain,
+        status: 'ACTIVE'
+      },
+      select: { tenantId: true },
+    });
+
+    if (customDomain) return customDomain.tenantId;
+
+    // 2. Check if it's the main domain (saeaa.com or saeaa.net) - should be handled as custom domain, but fallback
+    const mainDomains = [
+      'saeaa.com',
+      'www.saeaa.com',
+      'saeaa.net',
+      'www.saeaa.net',
+      'app.saeaa.com',
+      'app.saeaa.net'
+    ];
+    if (mainDomains.includes(normalizedDomain)) {
+      // Try to find default tenant or first tenant
+      const defaultTenant = await this.prisma.tenant.findFirst({
+        where: { id: 'default' },
+        select: { id: true },
+      });
+      if (defaultTenant) return defaultTenant.id;
+    }
+
+    // 3. Check if it's a subdomain of localhost or the main domain
     let subdomain = '';
     
-    if (domain.endsWith('.localhost')) {
-      subdomain = domain.replace('.localhost', '');
-    } else if (domain.endsWith(".saa'ah.com")) { // Replace with your actual production domain
-      subdomain = domain.replace(".saa'ah.com", '');
-    } else if (domain === 'localhost' || domain === '127.0.0.1') {
+    if (normalizedDomain.endsWith('.localhost')) {
+      subdomain = normalizedDomain.replace('.localhost', '');
+    } else if (normalizedDomain.endsWith('.saeaa.com')) {
+      subdomain = normalizedDomain.replace('.saeaa.com', '');
+      // Don't treat www or app as a subdomain
+      if (subdomain === 'www' || subdomain === 'app') {
+        return null;
+      }
+    } else if (normalizedDomain.endsWith('.saeaa.net')) {
+      subdomain = normalizedDomain.replace('.saeaa.net', '');
+      // Don't treat www or app as a subdomain
+      if (subdomain === 'www' || subdomain === 'app') {
+        return null;
+      }
+    } else if (normalizedDomain === 'localhost' || normalizedDomain === '127.0.0.1') {
       return null; // Main domain, no tenant
     }
 
@@ -89,16 +129,6 @@ export class TenantService {
       });
       if (tenant) return tenant.id;
     }
-
-    // 2. Check if it's a custom domain
-    const customDomain = await this.prisma.customDomain.findUnique({
-      where: { domain },
-      select: { tenantId: true },
-    });
-
-    if (customDomain) return customDomain.tenantId;
-
-    if (customDomain) return customDomain.tenantId;
 
     return null;
   }

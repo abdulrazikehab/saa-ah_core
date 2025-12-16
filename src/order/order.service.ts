@@ -81,7 +81,7 @@ export class OrderService {
     // Calculate total and validate inventory with supplier sync
     let totalAmount = 0;
     const inventoryChecks: { variantId: any; currentQuantity: any; reservedQuantity: any; }[] = [];
-    const itemsForValidation = [];
+    const itemsForValidation: { productId: string; variantId: string; quantity: number }[] = [];
 
     for (const item of cart.cartItems) {
       const price = item.productVariant?.price || item.product.price;
@@ -174,7 +174,7 @@ export class OrderService {
       });
 
       // Create order items
-      const orderItems = [];
+      const orderItems: any[] = [];
       for (const item of cart.cartItems) {
         const price = item.productVariant?.price || item.product.price;
         

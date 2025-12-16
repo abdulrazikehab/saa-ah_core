@@ -13,7 +13,13 @@ export class ThemeService {
   ) {}
 
   async create(tenantId: string, data: any) {
-    await this.tenantSyncService.ensureTenantExists(tenantId);
+    if (!tenantId) {
+      throw new NotFoundException('Tenant ID is required');
+    }
+    const tenantExists = await this.tenantSyncService.ensureTenantExists(tenantId);
+    if (!tenantExists) {
+      throw new NotFoundException(`Cannot create theme: Tenant ${tenantId} does not exist. Please set up your market first.`);
+    }
     return this.prisma.theme.create({
       data: {
         ...data,
@@ -23,13 +29,25 @@ export class ThemeService {
   }
 
   async findAll(tenantId: string) {
-    console.log('🔍 ThemeService.findAll - Querying for tenantId:', tenantId);
-    const themes = await this.prisma.theme.findMany({
-      where: { tenantId },
-      include: { versions: true },
-    });
-    console.log('🔍 ThemeService.findAll - Found', themes.length, 'themes');
-    return themes;
+    if (!tenantId) {
+      return [];
+    }
+    try {
+      console.log('🔍 ThemeService.findAll - Querying for tenantId:', tenantId);
+      const themes = await this.prisma.theme.findMany({
+        where: { tenantId },
+        include: { versions: true },
+      });
+      console.log('🔍 ThemeService.findAll - Found', themes.length, 'themes');
+      return themes;
+    } catch (error: any) {
+      // If tenant doesn't exist in database, return empty array
+      if (error?.code === 'P2003' || error?.message?.includes('Foreign key constraint')) {
+        this.logger.warn(`⚠️ Tenant ${tenantId} does not exist in database. Returning empty themes list.`);
+        return [];
+      }
+      throw error;
+    }
   }
 
   async findOne(tenantId: string, id: string) {
@@ -123,11 +141,28 @@ export class ThemeService {
    * Can be called to check and create themes if they don't exist
    */
   async ensureDefaultThemes(tenantId: string) {
-    const themes = await this.findAll(tenantId);
-    if (themes.length === 0) {
-      this.logger.log(`No themes found for tenant ${tenantId}, creating defaults`);
-      return this.createDefaultThemes(tenantId);
+    if (!tenantId || tenantId === 'system') {
+      return [];
     }
-    return themes;
+    
+    // Check if tenant exists first
+    const tenantExists = await this.tenantSyncService.ensureTenantExists(tenantId);
+    if (!tenantExists) {
+      this.logger.warn(`⚠️ Tenant ${tenantId} does not exist. Returning empty themes list.`);
+      return [];
+    }
+    
+    try {
+      const themes = await this.findAll(tenantId);
+      if (themes.length === 0) {
+        this.logger.log(`No themes found for tenant ${tenantId}, creating defaults`);
+        return this.createDefaultThemes(tenantId);
+      }
+      return themes;
+    } catch (error: any) {
+      this.logger.error(`Failed to ensure default themes for tenant ${tenantId}:`, error);
+      // Return empty array instead of throwing
+      return [];
+    }
   }
 }

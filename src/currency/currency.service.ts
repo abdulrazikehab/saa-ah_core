@@ -7,15 +7,23 @@ export interface CreateCurrencyDto {
   name: string;
   nameAr?: string;
   symbol: string;
+  symbolAr?: string;
   exchangeRate: number;
+  precision?: number; // Decimal places (default: 2)
+  isDefault?: boolean;
+  sortOrder?: number;
 }
 
 export interface UpdateCurrencyDto {
   name?: string;
   nameAr?: string;
   symbol?: string;
+  symbolAr?: string;
   exchangeRate?: number;
+  precision?: number;
   isActive?: boolean;
+  isDefault?: boolean;
+  sortOrder?: number;
 }
 
 export interface UpdateCurrencySettingsDto {
@@ -48,6 +56,14 @@ export class CurrencyService {
       throw new BadRequestException(`Currency ${data.code} already exists`);
     }
 
+    // If this currency is set as default, unset other defaults first
+    if (data.isDefault) {
+      await this.prisma.currency.updateMany({
+        where: { tenantId, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+
     const currency = await this.prisma.currency.create({
       data: {
         tenantId,
@@ -55,11 +71,47 @@ export class CurrencyService {
         name: data.name,
         nameAr: data.nameAr,
         symbol: data.symbol,
+        symbolAr: data.symbolAr,
         exchangeRate: data.exchangeRate,
+        precision: data.precision ?? 2,
+        isDefault: data.isDefault ?? false,
+        sortOrder: data.sortOrder ?? 0,
       },
     });
 
     this.logger.log(`Currency created: ${currency.code} for tenant ${tenantId}`);
+    return currency;
+  }
+
+  // Format amount according to currency precision
+  formatAmount(amount: number, precision: number = 2): string {
+    return amount.toFixed(precision);
+  }
+
+  // Round amount according to currency precision
+  roundAmount(amount: number, precision: number = 2): number {
+    const multiplier = Math.pow(10, precision);
+    return Math.round(amount * multiplier) / multiplier;
+  }
+
+  // Get default currency for tenant
+  async getDefaultCurrency(tenantId: string) {
+    const currency = await this.prisma.currency.findFirst({
+      where: { tenantId, isDefault: true, isActive: true },
+    });
+
+    if (!currency) {
+      // Fallback to SAR or first active currency
+      return this.prisma.currency.findFirst({
+        where: { 
+          tenantId, 
+          isActive: true,
+          OR: [{ code: 'SAR' }, {}],
+        },
+        orderBy: [{ code: 'asc' }],
+      });
+    }
+
     return currency;
   }
 
@@ -95,6 +147,14 @@ export class CurrencyService {
   async update(tenantId: string, code: string, data: UpdateCurrencyDto) {
     await this.findOne(tenantId, code);
 
+    // If this currency is being set as default, unset other defaults first
+    if (data.isDefault) {
+      await this.prisma.currency.updateMany({
+        where: { tenantId, isDefault: true, NOT: { code: code.toUpperCase() } },
+        data: { isDefault: false },
+      });
+    }
+
     const updated = await this.prisma.currency.update({
       where: {
         tenantId_code: {
@@ -106,12 +166,48 @@ export class CurrencyService {
         name: data.name,
         nameAr: data.nameAr,
         symbol: data.symbol,
+        symbolAr: data.symbolAr,
         exchangeRate: data.exchangeRate,
+        precision: data.precision,
         isActive: data.isActive,
+        isDefault: data.isDefault,
+        sortOrder: data.sortOrder,
       },
     });
 
     this.logger.log(`Currency updated: ${code}`);
+    return updated;
+  }
+
+  // Set a currency as default
+  async setDefault(tenantId: string, code: string) {
+    await this.findOne(tenantId, code);
+
+    // Unset all other defaults
+    await this.prisma.currency.updateMany({
+      where: { tenantId, isDefault: true },
+      data: { isDefault: false },
+    });
+
+    // Set this one as default
+    const updated = await this.prisma.currency.update({
+      where: {
+        tenantId_code: {
+          tenantId,
+          code: code.toUpperCase(),
+        },
+      },
+      data: { isDefault: true },
+    });
+
+    // Also update currency settings
+    await this.prisma.currencySettings.upsert({
+      where: { tenantId },
+      update: { baseCurrency: code.toUpperCase() },
+      create: { tenantId, baseCurrency: code.toUpperCase() },
+    });
+
+    this.logger.log(`Currency ${code} set as default for tenant ${tenantId}`);
     return updated;
   }
 
@@ -169,6 +265,23 @@ export class CurrencyService {
         },
       },
       data: { exchangeRate: 1 },
+    });
+
+    // Sync currency to tenant.settings.currency (so Settings page shows the same currency)
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { settings: true },
+    });
+
+    const currentSettings = (tenant?.settings || {}) as Record<string, unknown>;
+    const updatedSettings = {
+      ...currentSettings,
+      currency: data.baseCurrency.toUpperCase(),
+    };
+
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { settings: updatedSettings },
     });
 
     this.logger.log(`Currency settings updated for tenant ${tenantId}`);

@@ -99,7 +99,7 @@ export class CheckoutService {
 
   async validateCartForCheckout(tenantId: string, cartId: string) {
     const cart = await this.cartService.getCartById(tenantId, cartId);
-    const issues = [];
+    const issues: { type: string; message: string; itemId?: string; available?: number; requested?: number }[] = [];
 
     // Check inventory
     for (const item of cart.cartItems) {

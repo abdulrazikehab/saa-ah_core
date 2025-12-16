@@ -8,10 +8,12 @@ export class TemplateService implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit() {
-    // Seed templates on startup if none exist
+    // Always reseed templates if count doesn't match (added or removed templates)
     const count = await this.prisma.template.count({ where: { isDefault: true } });
-    if (count === 0) {
-      console.log('🌱 No default templates found, starting seeding...');
+    const expectedCount = templateSeeds.length;
+    
+    if (count !== expectedCount) {
+      console.log(`🌱 Found ${count} templates but expected ${expectedCount}, reseeding...`);
       await this.seedTemplates();
     } else {
       console.log(`✅ Found ${count} default templates in database`);

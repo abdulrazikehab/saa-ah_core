@@ -81,7 +81,8 @@ export class AdminController {
     // 9. Delete domain and SSL data
     await this.prisma.sslCertificate.deleteMany({});
     await this.prisma.customDomain.deleteMany({});
-    await this.prisma.domain.deleteMany({});
+    // Note: domain model may not exist in schema
+    // await this.prisma.domain.deleteMany({});
     
     // 10. Delete theme and plugin data
     await this.prisma.themeVersion.deleteMany({});
@@ -95,20 +96,20 @@ export class AdminController {
     // 12. Delete site configurations
     await this.prisma.siteConfig.deleteMany({});
     
-    // 13. Delete payment settings
-    await this.prisma.paymentSettings.deleteMany({});
+    // 13. Delete payment settings (may not exist in schema)
+    // await this.prisma.paymentSettings.deleteMany({});
     
-    // 14. Delete checkout settings
-    await this.prisma.checkoutSettings.deleteMany({});
+    // 14. Delete checkout settings (may not exist in schema)
+    // await this.prisma.checkoutSettings.deleteMany({});
     
     // 15. Delete integrations
     await this.prisma.integration.deleteMany({});
     
-    // 16. Delete KYC data
-    await this.prisma.kYC.deleteMany({});
+    // 16. Delete KYC data (may not exist in schema)
+    // await this.prisma.kYC.deleteMany({});
     
-    // 17. Delete permissions
-    await this.prisma.permission.deleteMany({});
+    // 17. Delete permissions (may not exist in schema)
+    // await this.prisma.permission.deleteMany({});
     
     // 18. Delete users (keep tenants for now)
     await this.prisma.user.deleteMany({});

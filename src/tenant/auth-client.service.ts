@@ -24,7 +24,8 @@ export class AuthClientService {
         throw new Error(`Auth service returned ${response.status}`);
       }
 
-      return await response.json();
+      const result = await response.json() as { allowed: boolean; currentCount: number; limit: number };
+      return result;
     } catch (error) {
       this.logger.error(`Failed to check market limit for user ${userId}:`, error);
       throw error;

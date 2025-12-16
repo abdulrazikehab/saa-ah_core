@@ -1,9 +1,10 @@
-import { Injectable, ExecutionContext, UnauthorizedException, CanActivate } from '@nestjs/common';
+import { Injectable, ExecutionContext, UnauthorizedException, CanActivate, Optional } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Observable } from 'rxjs';
 import { IS_PUBLIC_KEY } from './public.decorator';
+import { ApiKeyService } from '../api-key/api-key.service';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -11,15 +12,38 @@ export class JwtAuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    @Optional() private readonly apiKeyService?: ApiKeyService,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
 
     const request = context.switchToHttp().getRequest();
+    
+    // Check for API key first (X-API-Key header) - only if ApiKeyService is available
+    const apiKey = request.headers['x-api-key'] || request.headers['x-apikey'];
+    if (apiKey && this.apiKeyService) {
+      try {
+        const apiKeyInfo = await this.apiKeyService.validateApiKey(apiKey);
+        if (apiKeyInfo) {
+          // Set user context for API key authentication
+          request.user = {
+            id: `api-key-${apiKeyInfo.apiKeyId}`,
+            tenantId: apiKeyInfo.tenantId,
+            role: 'API_CLIENT',
+            email: null,
+          };
+          request.tenantId = apiKeyInfo.tenantId;
+          return true;
+        }
+      } catch (error) {
+        // If API key validation fails, continue to JWT check
+      }
+    }
+
     const token = this.extractTokenFromHeader(request);
 
     if (isPublic) {
@@ -45,8 +69,9 @@ export class JwtAuthGuard implements CanActivate {
       return true;
     }
     
+    // If no API key was provided and route is not public, require JWT token
     if (!token) {
-      throw new UnauthorizedException('No token provided');
+      throw new UnauthorizedException('No authentication token or API key provided');
     }
 
     try {

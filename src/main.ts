@@ -62,7 +62,22 @@ async function bootstrap() {
         return callback(null, true);
       }
       
-      // Allow any subdomain of saa'ah.com
+      // Allow main production domains (including app subdomains)
+      if (origin.match(/^https?:\/\/(www\.|app\.)?(saeaa\.com|saeaa\.net)$/)) {
+        return callback(null, true);
+      }
+      
+      // Allow any subdomain of saeaa.com (e.g., store.saeaa.com)
+      if (origin.match(/^https?:\/\/[\w-]+\.saeaa\.com$/)) {
+        return callback(null, true);
+      }
+      
+      // Allow any subdomain of saeaa.net (e.g., store.saeaa.net)
+      if (origin.match(/^https?:\/\/[\w-]+\.saeaa\.net$/)) {
+        return callback(null, true);
+      }
+      
+      // Legacy: Allow any subdomain of saa'ah.com (if still in use)
       if (origin.match(/^https?:\/\/[\w-]+\.saa'ah\.com$/)) {
         return callback(null, true);
       }
@@ -88,7 +103,9 @@ async function bootstrap() {
       'X-Tenant-Id',
       'X-Tenant-Domain',
       'X-Session-ID',
-      'X-Admin-API-Key'
+      'X-Admin-API-Key',
+      'X-API-Key',
+      'X-ApiKey'
     ],
     credentials: true,
     preflightContinue: false,
@@ -108,7 +125,7 @@ async function bootstrap() {
     app.useGlobalFilters(new ValidationExceptionFilter());
 
     const port = process.env.CORE_PORT || 3002;
-    await app.listen(port);
+    await app.listen(port,'0.0.0.0');
     logger.log(`✅ app-core listening on port ${port}`);
   } catch (error) {
     logger.error('Failed to start core service:', error);

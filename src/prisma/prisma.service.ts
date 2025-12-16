@@ -103,6 +103,45 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   get currencySettings() { return this.prisma.currencySettings; }
   get productSupplier() { return this.prisma.productSupplier; }
 
+  // Digital Cards Marketplace Models
+  get cardProduct() { return this.prisma.cardProduct; }
+  get cardInventory() { return this.prisma.cardInventory; }
+  get cardOrder() { return this.prisma.cardOrder; }
+  get cardOrderItem() { return this.prisma.cardOrderItem; }
+  get cardDelivery() { return this.prisma.cardDelivery; }
+  get wallet() { return this.prisma.wallet; }
+  get walletTransaction() { return this.prisma.walletTransaction; }
+  get walletTopUpRequest() { return this.prisma.walletTopUpRequest; }
+  get bank() { return this.prisma.bank; }
+  get bankAccount() { return this.prisma.bankAccount; }
+  get merchantFavorite() { return this.prisma.merchantFavorite; }
+  get supportTicket() { return this.prisma.supportTicket; }
+  get ticketReply() { return this.prisma.ticketReply; }
+  get cardBatch() { return this.prisma.cardBatch; }
+
+  // Merchant Dealer App Models
+  get merchant() { return this.prisma.merchant; }
+  get employee() { return this.prisma.employee; }
+  get player() { return this.prisma.player; }
+  get playerGameAccount() { return this.prisma.playerGameAccount; }
+  get merchantCart() { return this.prisma.merchantCart; }
+  get merchantCartItem() { return this.prisma.merchantCartItem; }
+  get merchantOrder() { return this.prisma.merchantOrder; }
+  get merchantOrderItem() { return this.prisma.merchantOrderItem; }
+  get merchantOrderDelivery() { return this.prisma.merchantOrderDelivery; }
+  get merchantOrderEvent() { return this.prisma.merchantOrderEvent; }
+  get paymentIntent() { return this.prisma.paymentIntent; }
+  get invoice() { return this.prisma.invoice; }
+  get promotion() { return this.prisma.promotion; }
+  get merchantPromotionProgress() { return this.prisma.merchantPromotionProgress; }
+  get priceAlertSubscription() { return this.prisma.priceAlertSubscription; }
+  get productPriceHistory() { return this.prisma.productPriceHistory; }
+  get merchantNotification() { return this.prisma.merchantNotification; }
+  get merchantFavoriteV2() { return this.prisma.merchantFavoriteV2; }
+  get merchantAuditLog() { return this.prisma.merchantAuditLog; }
+  get merchantSession() { return this.prisma.merchantSession; }
+  get merchantProductOverride() { return this.prisma.merchantProductOverride; }
+
   $transaction(p: any) {
     return this.prisma.$transaction(p);
   }

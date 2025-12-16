@@ -131,6 +131,10 @@ export class CreateProductDto {
 
   @IsString()
   @IsOptional()
+  productCode?: string;
+
+  @IsString()
+  @IsOptional()
   odooProductId?: string;
 
   @IsString()

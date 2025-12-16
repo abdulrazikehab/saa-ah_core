@@ -33,14 +33,14 @@ export class ProductService {
   const { variants, images, categoryIds, suppliers, supplierIds, ...productData } = createProductDto;
 
   // Check if SKU exists within tenant
-  let existingProduct = null;
+  let existingProduct: { id: string } | null = null;
   if (productData.sku) {
     existingProduct = await this.prisma.product.findFirst({
       where: {
         tenantId,
         sku: productData.sku,
       },
-    });
+    }) as { id: string } | null;
 
     if (existingProduct) {
       if (upsert) {
@@ -121,7 +121,7 @@ export class ProductService {
         isActive: true,
       },
     });
-    validSuppliers = existingSuppliers.map((s, index) => ({
+    validSuppliers = existingSuppliers.map((s: any, index: number) => ({
       supplierId: s.id,
       discountRate: Number(s.discountRate),
       isPrimary: index === 0, // First supplier is primary by default
@@ -226,8 +226,21 @@ export class ProductService {
       throw new ForbiddenException('Tenant ID is required');
     }
 
-    // Ensure tenant exists before querying
-    await this.tenantSyncService.ensureTenantExists(tenantId);
+    // Check if tenant exists before querying
+    const tenantExists = await this.tenantSyncService.ensureTenantExists(tenantId);
+    if (!tenantExists) {
+      // If tenant doesn't exist and can't be created, return empty result
+      this.logger.warn(`⚠️ Tenant ${tenantId} does not exist. Returning empty products list.`);
+      return {
+        data: [],
+        meta: {
+          total: 0,
+          page: Number(page) || 1,
+          limit: Number(limit) || 10,
+          totalPages: 0,
+        },
+      };
+    }
 
     // Coerce query parameters to numbers to avoid NaN
     const pageNum = Number(page) || 1;
@@ -239,15 +252,21 @@ export class ProductService {
     // Build where clause
     const where: any = { tenantId };
     
-    // Apply category filter through junction table
+    // Apply category filter through junction table - only include active categories
     if (filters?.categoryId) {
       where.categories = {
         some: {
           categoryId: filters.categoryId,
+          category: {
+            isActive: true, // Ensure category is active
+          },
         },
       };
       this.logger.log(`🔍 Filtering by categoryId: ${filters.categoryId}`);
     }
+    // Note: We don't filter out products with inactive categories when no category filter is specified
+    // because products might not have categories or might have multiple categories (some active, some inactive)
+    // The categories relation in the include will filter to only show active categories in the response
     
     if (filters?.search) {
       where.OR = [
@@ -275,6 +294,11 @@ export class ProductService {
         },
       },
       categories: {
+        where: {
+          category: {
+            isActive: true, // Only include active categories
+          },
+        },
         include: {
           category: true,
         },
@@ -323,6 +347,19 @@ export class ProductService {
         }),
       ]);
     } catch (error: any) {
+      // If tenant doesn't exist in database, return empty result
+      if (error?.code === 'P2003' || error?.message?.includes('Foreign key constraint')) {
+        this.logger.warn(`⚠️ Tenant ${tenantId} does not exist in database. Returning empty products list.`);
+        return {
+          data: [],
+          meta: {
+            total: 0,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: 0,
+          },
+        };
+      }
       // If relations don't exist yet, fall back to basic includes
       this.logger.warn('New relations not available, using basic query:', error.message);
       const basicInclude = {
@@ -338,20 +375,37 @@ export class ProductService {
           },
         },
       };
-      [products, total] = await Promise.all([
-        this.prisma.product.findMany({
-          where,
-          include: basicInclude,
-          skip,
-          take: limitNum,
-          orderBy: {
-            createdAt: 'desc',
-          },
-        }),
-        this.prisma.product.count({
-          where,
-        }),
-      ]);
+      try {
+        [products, total] = await Promise.all([
+          this.prisma.product.findMany({
+            where,
+            include: basicInclude,
+            skip,
+            take: limitNum,
+            orderBy: {
+              createdAt: 'desc',
+            },
+          }),
+          this.prisma.product.count({
+            where,
+          }),
+        ]);
+      } catch (fallbackError: any) {
+        // If tenant still doesn't exist, return empty result
+        if (fallbackError?.code === 'P2003' || fallbackError?.message?.includes('Foreign key constraint')) {
+          this.logger.warn(`⚠️ Tenant ${tenantId} does not exist in database. Returning empty products list.`);
+          return {
+            data: [],
+            meta: {
+              total: 0,
+              page: pageNum,
+              limit: limitNum,
+              totalPages: 0,
+            },
+          };
+        }
+        throw fallbackError;
+      }
     }
 
     this.logger.log(`📦 Fetched ${products.length} products for tenant ${tenantId} (total: ${total})`);
@@ -383,8 +437,11 @@ export class ProductService {
       throw new ForbiddenException('Tenant ID is required');
     }
 
-    // Ensure tenant exists
-    await this.tenantSyncService.ensureTenantExists(tenantId);
+    // Check if tenant exists
+    const tenantExists = await this.tenantSyncService.ensureTenantExists(tenantId);
+    if (!tenantExists) {
+      throw new NotFoundException(`Product not found: Tenant ${tenantId} does not exist`);
+    }
 
     // Build include object - conditionally include new relations
     const includeObj: any = {

@@ -37,6 +37,24 @@ export class CurrencyController {
     return this.currencyService.getSettings(tenantId);
   }
 
+  @Get('default')
+  async getDefault(@Request() req: AuthenticatedRequest) {
+    const tenantId = req.user?.tenantId || req.user?.id;
+    if (!tenantId) {
+      throw new Error('Tenant ID is required');
+    }
+    return this.currencyService.getDefaultCurrency(tenantId);
+  }
+
+  @Put('default/:code')
+  async setDefault(@Request() req: AuthenticatedRequest, @Param('code') code: string) {
+    const tenantId = req.user?.tenantId || req.user?.id;
+    if (!tenantId) {
+      throw new Error('Tenant ID is required');
+    }
+    return this.currencyService.setDefault(tenantId, code);
+  }
+
   @Put('settings')
   async updateSettings(@Request() req: AuthenticatedRequest, @Body() data: UpdateCurrencySettingsDto) {
     const tenantId = req.user.tenantId || req.user.id;

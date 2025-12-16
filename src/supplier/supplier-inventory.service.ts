@@ -188,8 +188,8 @@ export class SupplierInventoryService {
         throw new Error(`Supplier API returned ${response.status}`);
       }
 
-      const data = await response.json();
-      return data.quantity || data.stock || 0;
+      const data = await response.json() as { quantity?: number; stock?: number };
+      return data?.quantity || data?.stock || 0;
     } catch (error: any) {
       this.logger.error(`Failed to fetch inventory from supplier ${supplier.name}:`, error);
       throw new Error(`Failed to fetch supplier inventory: ${error.message}`);

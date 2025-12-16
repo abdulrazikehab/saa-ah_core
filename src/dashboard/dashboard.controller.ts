@@ -1,7 +1,11 @@
-import { Controller, Get, Post, Body, UseGuards, Request, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Request, Query, Logger } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom, catchError } from 'rxjs';
+import { of } from 'rxjs';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SiteConfigService } from '../site-config/site-config.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PageService } from '../page/page.service';
 import { Public } from '../auth/public.decorator';
 
 /**
@@ -10,9 +14,13 @@ import { Public } from '../auth/public.decorator';
 @UseGuards(JwtAuthGuard)
 @Controller('dashboard')
 export class DashboardController {
+  private readonly logger = new Logger(DashboardController.name);
+  
   constructor(
     private readonly siteConfig: SiteConfigService,
     private readonly prisma: PrismaService,
+    private readonly pageService: PageService,
+    private readonly httpService: HttpService,
   ) {}
 
   /**
@@ -84,7 +92,83 @@ export class DashboardController {
     const limitNum = limit ? parseInt(limit, 10) : 50;
     const skip = (pageNum - 1) * limitNum;
 
-    // 1. Fetch registered users
+    // 1. Fetch customers from auth service (Customer table)
+    let authCustomers: any[] = [];
+    try {
+      // Auth service URL - check if it needs /api prefix
+      let authBaseUrl = (process.env.AUTH_API_URL || process.env.AUTH_SERVICE_URL || 'http://localhost:3001').replace(/\/+$/, '');
+      // If URL doesn't end with /api, check if we need to add it
+      if (!authBaseUrl.includes('/api') && !authBaseUrl.includes('localhost:3001')) {
+        // For production URLs, might need /api prefix
+        authBaseUrl = `${authBaseUrl}/api`;
+      }
+      
+      const token = req.headers.authorization?.replace('Bearer ', '') || req.user?.accessToken || '';
+      const customersUrl = `${authBaseUrl}/customers`;
+      
+      this.logger.log(`🔍 Fetching customers from auth service - URL: ${customersUrl}, tenantId: ${tenantId}, hasToken: ${!!token}`);
+      
+      if (!token) {
+        this.logger.warn('⚠️ No authentication token available for auth service call - customers may not be fetched');
+        // Don't throw, just skip auth service call
+      } else {
+        try {
+          const authResponse = await firstValueFrom(
+            this.httpService.get(customersUrl, {
+              params: { page: 1, limit: 1000 }, // Get all customers
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'X-Tenant-ID': tenantId,
+                'Content-Type': 'application/json',
+              },
+              timeout: 10000, // 10 second timeout
+            })
+          );
+          
+          this.logger.log(`✅ Auth service response received:`, {
+            status: authResponse.status,
+            hasData: !!authResponse.data,
+            dataType: typeof authResponse.data,
+            dataKeys: authResponse.data ? Object.keys(authResponse.data) : [],
+          });
+          
+          // Auth service returns { data: [...], meta: {...} }
+          if (authResponse.data) {
+            if (Array.isArray(authResponse.data)) {
+              authCustomers = authResponse.data;
+              this.logger.log(`📦 Found ${authCustomers.length} customers in array format`);
+            } else if (authResponse.data.data && Array.isArray(authResponse.data.data)) {
+              authCustomers = authResponse.data.data;
+              this.logger.log(`📦 Found ${authCustomers.length} customers in data.data format`);
+            } else if (authResponse.data.customers && Array.isArray(authResponse.data.customers)) {
+              authCustomers = authResponse.data.customers;
+              this.logger.log(`📦 Found ${authCustomers.length} customers in data.customers format`);
+            } else {
+              this.logger.warn(`⚠️ Unexpected response format from auth service:`, JSON.stringify(authResponse.data).substring(0, 200));
+            }
+          }
+          
+          this.logger.log(`✅ Successfully fetched ${authCustomers.length} customers from auth service`);
+        } catch (httpError: any) {
+          this.logger.error(`❌ HTTP error fetching customers from auth service:`, {
+            message: httpError.message,
+            status: httpError.response?.status,
+            statusText: httpError.response?.statusText,
+            data: httpError.response?.data,
+            code: httpError.code,
+          });
+          // Continue with other sources
+        }
+      }
+    } catch (error: any) {
+      this.logger.error(`❌ Failed to fetch customers from auth service:`, {
+        message: error.message,
+        stack: error.stack?.substring(0, 500),
+      });
+      // Continue with other sources even if auth service fails
+    }
+
+    // 2. Fetch registered users from core database
     const users = await this.prisma.user.findMany({
       where: { 
         tenantId,
@@ -97,7 +181,7 @@ export class DashboardController {
       }
     });
 
-    // 2. Fetch orders
+    // 3. Fetch orders
     const orders = await this.prisma.order.findMany({
       where: { tenantId },
       select: {
@@ -111,24 +195,51 @@ export class DashboardController {
       orderBy: { createdAt: 'desc' },
     });
 
-    // 3. Merge data
+    // 4. Merge data
     const customerMap = new Map();
 
-    // Add registered users first
+    // Add customers from auth service (Customer table) first
+    authCustomers.forEach((customer: any) => {
+      const email = (customer.email || '').toLowerCase().trim();
+      if (email) {
+        customerMap.set(email, {
+          id: customer.id || email,
+          email: customer.email,
+          name: customer.firstName && customer.lastName 
+            ? `${customer.firstName} ${customer.lastName}`.trim()
+            : customer.firstName || customer.lastName || customer.name || 'عميل مسجل',
+          firstName: customer.firstName,
+          lastName: customer.lastName,
+          phone: customer.phone || '',
+          totalOrders: 0,
+          totalSpent: 0,
+          loyaltyPoints: 0,
+          loyaltyTier: 'bronze',
+          createdAt: customer.createdAt || new Date(),
+          lastOrderDate: null,
+          isRegistered: true
+        });
+      }
+    });
+
+    // Add registered users from core database (if not already added)
     users.forEach((user: any) => {
-      customerMap.set(user.email, {
-        id: user.email,
-        email: user.email,
-        name: user.name || 'عميل مسجل',
-        phone: '',
-        totalOrders: 0,
-        totalSpent: 0,
-        loyaltyPoints: 0,
-        loyaltyTier: 'bronze',
-        createdAt: user.createdAt,
-        lastOrderDate: null,
-        isRegistered: true
-      });
+      const email = (user.email || '').toLowerCase().trim();
+      if (email && !customerMap.has(email)) {
+        customerMap.set(email, {
+          id: user.email,
+          email: user.email,
+          name: user.name || 'عميل مسجل',
+          phone: '',
+          totalOrders: 0,
+          totalSpent: 0,
+          loyaltyPoints: 0,
+          loyaltyTier: 'bronze',
+          createdAt: user.createdAt,
+          lastOrderDate: null,
+          isRegistered: true
+        });
+      }
     });
 
     // Merge with order data
@@ -176,8 +287,23 @@ export class DashboardController {
     const customers = Array.from(customerMap.values())
       .slice(skip, skip + limitNum);
 
+    // Ensure all customers have proper IDs (use customer ID from auth service if available, otherwise email)
+    const customersWithIds = customers.map(customer => ({
+      ...customer,
+      id: customer.id || customer.email, // Ensure ID is always set
+    }));
+
+    this.logger.log(`📊 Customer summary:`, {
+      totalInMap: customerMap.size,
+      returned: customersWithIds.length,
+      fromAuthService: authCustomers.length,
+      fromUsers: users.length,
+      fromOrders: orders.length,
+      tenantId,
+    });
+    
     return {
-      customers,
+      customers: customersWithIds,
       total: customerMap.size,
       page: pageNum,
       limit: limitNum,
@@ -302,5 +428,69 @@ export class DashboardController {
       page: pageNum,
       limit: limitNum,
     };
+  }
+
+  /**
+   * Get store managers for support page
+   * Public endpoint accessible from storefront
+   */
+  @Public()
+  @Get('support/store-managers')
+  async getStoreManagers(@Request() req: any) {
+    const tenantId = req.tenantId || process.env.DEFAULT_TENANT_ID || 'default';
+    
+    // Ensure support page exists
+    await this.ensureSupportPage(tenantId);
+    
+    // Note: Store managers are stored in auth database
+    // This endpoint should be called from frontend which will fetch from auth service
+    // For now, return empty array - frontend will handle fetching from auth service
+    return {
+      storeManagers: [],
+      message: 'Use the auth service to fetch store managers'
+    };
+  }
+
+  /**
+   * Ensure support page exists, create if it doesn't
+   */
+  private async ensureSupportPage(tenantId: string) {
+    try {
+      const existingPage = await this.pageService.findBySlug(tenantId, 'support', false);
+      if (!existingPage) {
+        // Create support page
+        await this.pageService.create(tenantId, {
+          title: 'الدعم الفني',
+          slug: 'support',
+          content: {
+            sections: [
+              {
+                id: 'support-hero',
+                type: 'hero',
+                props: {
+                  title: 'الدعم الفني',
+                  subtitle: 'تواصل مع فريق الدعم',
+                  backgroundColor: '#1a1a1a',
+                  textColor: '#ffffff',
+                  minHeight: '200px'
+                }
+              },
+              {
+                id: 'store-managers',
+                type: 'custom',
+                props: {
+                  component: 'StoreManagersList',
+                  title: 'مديرو المتجر'
+                }
+              }
+            ]
+          },
+          isPublished: true
+        });
+      }
+    } catch (error) {
+      // Log error but don't throw - page creation is optional
+      console.error('Failed to ensure support page:', error);
+    }
   }
 }

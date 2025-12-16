@@ -44,6 +44,7 @@ export class ProductResponseDto {
   images?: ProductImageResponseDto[];
   categories?: any[]; // We'll define CategoryResponseDto later
   productId?: string;
+  productCode?: string;
   odooProductId?: string;
   brand?: {
     id: string;

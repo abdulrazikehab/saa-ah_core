@@ -42,49 +42,141 @@ export class PageService {
   }
 
   async create(tenantId: string, data: any) {
-    await this.tenantSyncService.ensureTenantExists(tenantId);
+    try {
+      // Check if tenant exists before creating page
+      const tenantExists = await this.tenantSyncService.ensureTenantExists(tenantId);
+      if (!tenantExists) {
+        throw new ForbiddenException(`Cannot create page: Tenant ${tenantId} does not exist. Please set up your market first.`);
+      }
 
-    // Auto-generate slug from title if not provided or empty
-    let slug = data.slug?.trim();
-    if (!slug) {
-      slug = this.generateSlug(data.title || 'page');
-    } else {
-      // Clean the provided slug
-      slug = this.generateSlug(slug);
-    }
+      // Validate and set title - required field
+      const title = (data.title?.trim() || 'Untitled Page').trim();
+      if (!title || title.length === 0) {
+        throw new ConflictException('Page title is required');
+      }
 
-    // Ensure slug is unique
-    slug = await this.ensureUniqueSlug(tenantId, slug);
+      // Auto-generate slug from title if not provided or empty
+      let slug = data.slug?.trim();
+      if (!slug) {
+        slug = this.generateSlug(title);
+      } else {
+        // Clean the provided slug
+        slug = this.generateSlug(slug);
+      }
 
-    return this.prisma.page.create({
-      data: {
+      // Ensure slug is unique
+      slug = await this.ensureUniqueSlug(tenantId, slug);
+
+      // Map seoDescription to seoDesc if provided (for frontend compatibility)
+      const pageData: any = {
         ...data,
+        title,
         slug,
         tenantId,
-      },
-    });
+      };
+
+      // Handle seoDescription -> seoDesc mapping
+      if (data.seoDescription && !data.seoDesc) {
+        pageData.seoDesc = data.seoDescription;
+        delete pageData.seoDescription;
+      }
+
+      // Remove any fields that don't exist in the schema
+      const allowedFields = ['title', 'slug', 'content', 'draftContent', 'isPublished', 'seoTitle', 'seoDesc', 'tenantId'];
+      const cleanedData: any = { tenantId, title, slug };
+      for (const key of allowedFields) {
+        if (pageData[key] !== undefined) {
+          cleanedData[key] = pageData[key];
+        }
+      }
+
+      // Ensure content is properly formatted as JSON
+      if (cleanedData.content && typeof cleanedData.content !== 'object') {
+        try {
+          cleanedData.content = typeof cleanedData.content === 'string' 
+            ? JSON.parse(cleanedData.content) 
+            : cleanedData.content;
+        } catch (e) {
+          // If parsing fails, keep original content
+          console.warn('Failed to parse page content as JSON:', e);
+        }
+      }
+
+      return await this.prisma.page.create({
+        data: cleanedData,
+      });
+    } catch (error: any) {
+      // Handle Prisma errors
+      if (error?.code === 'P2002') {
+        throw new ConflictException(`A page with this slug already exists. Please use a different slug.`);
+      }
+      if (error?.code === 'P2003') {
+        throw new ForbiddenException(`Cannot create page: Invalid tenant. Please set up your market first.`);
+      }
+      // Re-throw known exceptions
+      if (error instanceof ForbiddenException || error instanceof ConflictException) {
+        throw error;
+      }
+      // Log and re-throw unknown errors
+      console.error('Error creating page:', error);
+      throw new ConflictException(`Failed to create page: ${error?.message || 'Unknown error'}`);
+    }
   }
 
   async findAll(tenantId: string) {
-    return this.prisma.page.findMany({
-      where: { tenantId },
-      orderBy: { updatedAt: 'desc' },
-    });
+    // Check if tenant exists, but don't fail if it doesn't - just return empty array
+    const tenantExists = await this.tenantSyncService.ensureTenantExists(tenantId);
+    if (!tenantExists) {
+      // Return empty array if tenant doesn't exist
+      return [];
+    }
+    try {
+      return await this.prisma.page.findMany({
+        where: { tenantId },
+        orderBy: { updatedAt: 'desc' },
+      });
+    } catch (error: any) {
+      // If tenant doesn't exist in database, return empty array
+      if (error?.code === 'P2003' || error?.message?.includes('Foreign key constraint')) {
+        return [];
+      }
+      throw error;
+    }
   }
 
   async findOne(tenantId: string, id: string) {
-    const page = await this.prisma.page.findFirst({
-      where: { id, tenantId },
-    });
-
-    if (!page) {
-      throw new NotFoundException(`Page with ID ${id} not found`);
+    // Check if tenant exists first
+    const tenantExists = await this.tenantSyncService.ensureTenantExists(tenantId);
+    if (!tenantExists) {
+      throw new NotFoundException(`Page not found: Tenant ${tenantId} does not exist`);
     }
 
-    return page;
+    try {
+      const page = await this.prisma.page.findFirst({
+        where: { id, tenantId },
+      });
+
+      if (!page) {
+        throw new NotFoundException(`Page with ID ${id} not found`);
+      }
+
+      return page;
+    } catch (error: any) {
+      // If tenant doesn't exist in database, throw not found
+      if (error?.code === 'P2003' || error?.message?.includes('Foreign key constraint')) {
+        throw new NotFoundException(`Page not found: Tenant ${tenantId} does not exist`);
+      }
+      throw error;
+    }
   }
 
   async findBySlug(tenantId: string, slug: string, includeUnpublished: boolean = false) {
+    // Check if tenant exists, but don't fail for public pages - just return empty
+    const tenantExists = await this.tenantSyncService.ensureTenantExists(tenantId);
+    if (!tenantExists) {
+      // For public pages, return null instead of throwing error
+      return null;
+    }
     const where: any = { slug, tenantId };
     
     // For public access, only return published pages unless explicitly requested
@@ -97,7 +189,8 @@ export class PageService {
     });
 
     if (!page) {
-      throw new NotFoundException(`Page with slug ${slug} not found`);
+      // Return null instead of throwing for public endpoints
+      return null;
     }
 
     return page;

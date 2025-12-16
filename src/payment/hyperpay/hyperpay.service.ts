@@ -94,6 +94,19 @@ export class HyperpayService {
       ip?: string;
     },
   ): Promise<PaymentSessionResponse> {
+    // Get default currency from tenant settings if not provided or is default
+    if (!currency || currency === 'SAR') {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { settings: true },
+      });
+      const settings = (tenant?.settings || {}) as Record<string, unknown>;
+      const defaultCurrency = (settings.currency as string);
+      if (defaultCurrency) {
+        currency = defaultCurrency;
+      }
+    }
+    
     if (!this.entityId || !this.accessToken) {
       throw new BadRequestException('Payment gateway not configured');
     }

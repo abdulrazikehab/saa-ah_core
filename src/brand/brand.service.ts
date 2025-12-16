@@ -75,10 +75,22 @@ export class BrandService {
   }
 
   async findAll(tenantId: string) {
-    return this.prisma.brand.findMany({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-    });
+    if (!tenantId) {
+      return [];
+    }
+    try {
+      return await this.prisma.brand.findMany({
+        where: { tenantId },
+        orderBy: { createdAt: 'desc' },
+      });
+    } catch (error: any) {
+      // If tenant doesn't exist in database, return empty array
+      if (error?.code === 'P2003' || error?.message?.includes('Foreign key constraint')) {
+        this.logger.warn(`⚠️ Tenant ${tenantId} does not exist in database. Returning empty brands list.`);
+        return [];
+      }
+      throw error;
+    }
   }
 
   async findOne(tenantId: string, id: string) {

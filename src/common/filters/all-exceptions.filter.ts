@@ -45,30 +45,39 @@ export class AllExceptionsFilter implements ExceptionFilter {
       
       // Only log if we have a valid tenant ID (foreign key constraint requires existing tenant)
       if (this.prisma.activityLog && tenantId && tenantId !== 'system') {
-        await this.prisma.activityLog.create({
-          data: {
-            tenantId,
-            actorId: user?.id || user?.sub || 'anonymous',
-            action: 'ERROR',
-            targetId: status.toString(),
-            details: {
-              severity: status >= 500 ? 'CRITICAL' : status >= 400 ? 'HIGH' : 'MEDIUM',
-              message: typeof message === 'string' ? message : JSON.stringify(message),
-              stack,
-              method: request.method,
-              path: request.url,
-              statusCode: status,
-              ipAddress: request.ip || request.connection?.remoteAddress,
-              userAgent: request.headers['user-agent'],
-              resourceType: 'SYSTEM',
-              userEmail: user?.email,
-              userName: user?.name,
-            },
-          },
+        // Verify tenant exists before creating activity log to avoid foreign key constraint violation
+        const tenantExists = await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { id: true },
         });
+
+        if (tenantExists) {
+          await this.prisma.activityLog.create({
+            data: {
+              tenantId,
+              actorId: user?.id || user?.sub || 'anonymous',
+              action: 'ERROR',
+              targetId: status.toString(),
+              details: {
+                severity: status >= 500 ? 'CRITICAL' : status >= 400 ? 'HIGH' : 'MEDIUM',
+                message: typeof message === 'string' ? message : JSON.stringify(message),
+                stack,
+                method: request.method,
+                path: request.url,
+                statusCode: status,
+                ipAddress: request.ip || request.connection?.remoteAddress,
+                userAgent: request.headers['user-agent'],
+                resourceType: 'SYSTEM',
+                userEmail: user?.email,
+                userName: user?.name,
+              },
+            },
+          });
+        }
       }
     } catch (error) {
       // Silent fail - don't break error response if logging fails
+      this.logger.debug(`Failed to log activity: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
     // Send standardized error response

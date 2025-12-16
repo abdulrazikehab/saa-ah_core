@@ -55,6 +55,14 @@ export class PaymentService {
           },
         });
 
+        // Get default currency for tenant
+        const tenant = await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { settings: true },
+        });
+        const settings = (tenant?.settings || {}) as Record<string, unknown>;
+        const defaultCurrency = (settings.currency as string) || 'SAR';
+
         // Create transaction with HOLD status
         await this.prisma.transaction.create({
           data: {
@@ -62,7 +70,7 @@ export class PaymentService {
             orderId: order.id,
             orderNumber: order.orderNumber,
             amount: orderAmount,
-            currency: 'SAR',
+            currency: defaultCurrency,
             status: 'PENDING', // Hold status
             paymentProvider: 'HYPERPAY',
             customerEmail: order.customerEmail,
@@ -165,7 +173,7 @@ export class PaymentService {
         throw new NotFoundException('Payment not found');
       }
 
-      let gatewayStatus = null;
+      let gatewayStatus: any = null;
       if (payment.gatewayPaymentId) {
         try {
           gatewayStatus = await this.hyperpayService.checkPaymentStatus(payment.gatewayPaymentId);

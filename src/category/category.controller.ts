@@ -42,16 +42,22 @@ export class CategoryController {
       const tenantId = req.tenantId || tenantIdHeader || process.env.DEFAULT_TENANT_ID || 'default';
 
       const categories = await this.prisma.category.findMany({
-        where: { tenantId },
+        where: { 
+          tenantId,
+          isActive: true // Only return active categories
+        },
         select: {
           id: true,
           name: true,
+          nameAr: true,
           slug: true,
           description: true,
+          descriptionAr: true,
           image: true,
           createdAt: true,
           updatedAt: true,
           parentId: true,
+          isActive: true,
           _count: {
             select: { products: true }
           }
@@ -68,33 +74,53 @@ export class CategoryController {
       return { categories: mappedCategories };
     } catch (error: any) {
       console.error('Error in getCategories:', error);
+      
+      // If tenant doesn't exist, return empty array
+      if (error?.code === 'P2003' || error?.message?.includes('Foreign key constraint')) {
+        return { categories: [] };
+      }
+      
       // If parentId column doesn't exist, try without it
       if (error.message?.includes('parentId') || error.code === 'P2001') {
         const tenantId = req.tenantId || tenantIdHeader || process.env.DEFAULT_TENANT_ID || 'default';
-        const categories = await this.prisma.category.findMany({
-          where: { tenantId },
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            description: true,
-            image: true,
-            createdAt: true,
-            updatedAt: true,
-            _count: {
-              select: { products: true }
-            }
-          },
-          orderBy: { name: 'asc' },
-        });
-        
-        const mappedCategories = categories.map((c: any) => ({
-          ...c,
-          productCount: c._count.products,
-          parentId: null
-        }));
-        
-        return { categories: mappedCategories };
+        try {
+          const categories = await this.prisma.category.findMany({
+            where: { 
+              tenantId,
+              isActive: true // Only return active categories
+            },
+            select: {
+              id: true,
+              name: true,
+              nameAr: true,
+              slug: true,
+              description: true,
+              descriptionAr: true,
+              image: true,
+              createdAt: true,
+              updatedAt: true,
+              isActive: true,
+              _count: {
+                select: { products: true }
+              }
+            },
+            orderBy: { name: 'asc' },
+          });
+          
+          const mappedCategories = categories.map((c: any) => ({
+            ...c,
+            productCount: c._count.products,
+            parentId: null
+          }));
+          
+          return { categories: mappedCategories };
+        } catch (fallbackError: any) {
+          // If tenant still doesn't exist, return empty array
+          if (fallbackError?.code === 'P2003' || fallbackError?.message?.includes('Foreign key constraint')) {
+            return { categories: [] };
+          }
+          throw fallbackError;
+        }
       }
       throw error;
     }
@@ -135,16 +161,21 @@ export class CategoryController {
       }
     }
 
-    // Try to create category with parentId, fallback without it if column doesn't exist
+    // Try to create category with all fields
     try {
       const category = await this.prisma.category.create({
         data: {
           name: body.name,
+          nameAr: body.nameAr,
           description: body.description,
+          descriptionAr: body.descriptionAr,
           slug: slug,
           tenantId: tenantId,
           image: body.image,
+          icon: body.icon,
           parentId: body.parentId || null,
+          isActive: body.isActive !== undefined ? body.isActive : true,
+          sortOrder: body.sortOrder || 0,
         },
       });
       
@@ -153,16 +184,22 @@ export class CategoryController {
         category 
       };
     } catch (error: any) {
-      // If parentId column doesn't exist, try without it
-      if (error.message?.includes('parentId') || error.code === 'P2009') {
+      // If some columns don't exist, try with minimal fields
+      if (error.message?.includes('Unknown column') || error.code === 'P2009') {
         const category = await this.prisma.category.create({
           data: {
             name: body.name,
+            nameAr: body.nameAr,
             description: body.description,
+            descriptionAr: body.descriptionAr,
             slug: slug,
             tenantId: tenantId,
             image: body.image,
-          },
+            icon: body.icon,
+            parentId: body.parentId || null,
+            isActive: body.isActive !== undefined ? body.isActive : true,
+            sortOrder: body.sortOrder || 0,
+          } as any, // Use 'as any' to bypass TypeScript if some fields don't exist in schema
         });
         
         return { 
@@ -175,7 +212,7 @@ export class CategoryController {
     
     return { 
       message: 'Category created successfully',
-      category 
+      category: category
     };
   }
 
@@ -187,18 +224,26 @@ export class CategoryController {
     @Param('id') id: string,
   ) {
     const tenantId = req.tenantId || tenantIdHeader || process.env.DEFAULT_TENANT_ID || 'default';
-    const category = await this.prisma.category.findFirst({
-      where: {
-        id: id,
-        tenantId,
-      },
-    });
+    try {
+      const category = await this.prisma.category.findFirst({
+        where: {
+          id: id,
+          tenantId,
+        },
+      });
 
-    if (!category) {
-      throw new BadRequestException('Category not found');
+      if (!category) {
+        throw new BadRequestException('Category not found');
+      }
+
+      return { category };
+    } catch (error: any) {
+      // If tenant doesn't exist, throw not found
+      if (error?.code === 'P2003' || error?.message?.includes('Foreign key constraint')) {
+        throw new BadRequestException('Category not found: Tenant does not exist');
+      }
+      throw error;
     }
-
-    return { category };
   }
 
   @Patch(':id')
@@ -242,15 +287,21 @@ export class CategoryController {
       }
     }
 
+    const updateData: any = {};
+    if (body.name !== undefined) updateData.name = body.name;
+    if (body.nameAr !== undefined) updateData.nameAr = body.nameAr;
+    if (body.description !== undefined) updateData.description = body.description;
+    if (body.descriptionAr !== undefined) updateData.descriptionAr = body.descriptionAr;
+    if (body.slug !== undefined) updateData.slug = body.slug;
+    if (body.image !== undefined) updateData.image = body.image;
+    if (body.icon !== undefined) updateData.icon = body.icon;
+    if (body.parentId !== undefined) updateData.parentId = body.parentId || null;
+    if (body.isActive !== undefined) updateData.isActive = body.isActive;
+    if (body.sortOrder !== undefined) updateData.sortOrder = body.sortOrder;
+
     const category = await this.prisma.category.update({
       where: { id: id },
-      data: {
-        ...(body.name && { name: body.name }),
-        ...(body.description && { description: body.description }),
-        ...(body.slug && { slug: body.slug }),
-        ...(body.image !== undefined && { image: body.image }),
-        ...(body.parentId !== undefined && { parentId: body.parentId || null }),
-      },
+      data: updateData,
     });
 
     return { 

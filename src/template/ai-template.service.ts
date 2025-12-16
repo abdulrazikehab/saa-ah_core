@@ -346,7 +346,7 @@ Return ONLY valid JSON with NO additional text, explanations, or markdown format
     dto: GenerateTemplateDto,
     count: number = 3
   ): Promise<any[]> {
-    const variations = [];
+    const variations: any[] = [];
 
     for (let i = 0; i < count; i++) {
       const variation = await this.generateTemplate({

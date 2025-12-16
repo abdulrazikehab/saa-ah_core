@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, TransactionStatus } from '@prisma/client';
+import { getDefaultCurrency } from '../common/utils/currency.util';
 
 @Injectable()
 export class TransactionService {
@@ -10,6 +11,8 @@ export class TransactionService {
    * Get tenant balance summary
    */
   async getTenantBalance(tenantId: string) {
+    const defaultCurrency = await getDefaultCurrency(this.prisma, tenantId);
+    
     const transactions = await this.prisma.transaction.findMany({
       where: { tenantId },
       select: {
@@ -17,24 +20,36 @@ export class TransactionService {
         platformFee: true,
         merchantEarnings: true,
         status: true,
+        currency: true,
       },
     });
 
+    // Calculate totals in default currency (convert other currencies if needed)
     const totalRevenue = transactions
-      .filter((t) => t.status === 'COMPLETED')
-      .reduce((sum, t) => sum + Number(t.amount), 0);
+      .filter((t: any) => t.status === 'COMPLETED')
+      .reduce((sum: number, t: any) => {
+        // If transaction is in default currency, add directly
+        // Otherwise, you might want to convert using exchange rates
+        // For now, we'll sum all amounts regardless of currency
+        return sum + Number(t.amount);
+      }, 0);
 
     const totalPlatformFees = transactions
-      .filter((t) => t.status === 'COMPLETED')
-      .reduce((sum, t) => sum + Number(t.platformFee), 0);
+      .filter((t: any) => t.status === 'COMPLETED')
+      .reduce((sum: number, t: any) => sum + Number(t.platformFee), 0);
 
     const totalEarnings = transactions
-      .filter((t) => t.status === 'COMPLETED')
-      .reduce((sum, t) => sum + Number(t.merchantEarnings), 0);
+      .filter((t: any) => t.status === 'COMPLETED')
+      .reduce((sum: number, t: any) => sum + Number(t.merchantEarnings), 0);
 
     const pendingAmount = transactions
-      .filter((t) => t.status === 'PENDING' || t.status === 'PROCESSING')
-      .reduce((sum, t) => sum + Number(t.merchantEarnings), 0);
+      .filter((t: any) => t.status === 'PENDING' || t.status === 'PROCESSING')
+      .reduce((sum: number, t: any) => sum + Number(t.merchantEarnings), 0);
+
+    // Get unique currencies used in transactions
+    const currenciesUsed = Array.from(
+      new Set(transactions.map((t: any) => t.currency || defaultCurrency))
+    );
 
     return {
       totalRevenue,
@@ -42,7 +57,8 @@ export class TransactionService {
       totalEarnings,
       pendingAmount,
       availableBalance: totalEarnings,
-      currency: 'SAR',
+      currency: defaultCurrency,
+      currenciesUsed, // List of all currencies used in transactions
     };
   }
 
@@ -98,7 +114,7 @@ export class TransactionService {
     ]);
 
     return {
-      transactions: transactions.map((t) => ({
+      transactions: transactions.map((t: any) => ({
         id: t.id,
         orderNumber: t.orderNumber || t.order?.orderNumber,
         amount: Number(t.amount),
@@ -115,6 +131,12 @@ export class TransactionService {
         processedAt: t.processedAt,
         settledAt: t.settledAt,
         createdAt: t.createdAt,
+        // Card details (from metadata)
+        cardNumber: (t.metadata as any)?.cardNumber,
+        cardBin: (t.metadata as any)?.cardBin,
+        cardLast4: (t.metadata as any)?.cardLast4,
+        // Print tracking (from metadata)
+        printCount: (t.metadata as any)?.printCount || 0,
       })),
       total,
       limit: filters?.limit || 50,
@@ -197,7 +219,7 @@ export class TransactionService {
 
     // Group by payment provider
     const byProvider = transactions.reduce(
-      (acc, t) => {
+      (acc: any, t: any) => {
         const provider = t.paymentProvider;
         if (!acc[provider]) {
           acc[provider] = { count: 0, amount: 0 };
@@ -211,7 +233,7 @@ export class TransactionService {
 
     // Group by date
     const byDate = transactions.reduce(
-      (acc, t) => {
+      (acc: any, t: any) => {
         const date = t.createdAt.toISOString().split('T')[0];
         if (!acc[date]) {
           acc[date] = { count: 0, amount: 0, fees: 0, earnings: 0 };
@@ -231,22 +253,61 @@ export class TransactionService {
     return {
       totalTransactions: transactions.length,
       totalAmount: transactions.reduce(
-        (sum, t) => sum + Number(t.amount),
+        (sum: number, t: any) => sum + Number(t.amount),
         0,
       ),
       totalFees: transactions.reduce(
-        (sum, t) => sum + Number(t.platformFee),
+        (sum: number, t: any) => sum + Number(t.platformFee),
         0,
       ),
       totalEarnings: transactions.reduce(
-        (sum, t) => sum + Number(t.merchantEarnings),
+        (sum: number, t: any) => sum + Number(t.merchantEarnings),
         0,
       ),
       byProvider,
-      byDate: Object.entries(byDate).map(([date, data]) => ({
-        date,
-        ...data,
-      })),
+      byDate: Object.entries(byDate).map(([date, data]: [string, any]) => {
+        const dataObj = data && typeof data === 'object' ? data : {};
+        return {
+          date,
+          ...dataObj,
+        };
+      }),
+    };
+  }
+
+  /**
+   * Reprint transaction receipt and increment print count
+   */
+  async reprintTransaction(tenantId: string, transactionId: string) {
+    const transaction = await this.prisma.transaction.findFirst({
+      where: {
+        id: transactionId,
+        tenantId,
+      },
+    });
+
+    if (!transaction) {
+      throw new Error('Transaction not found');
+    }
+
+    // Increment print count
+    const updated = await this.prisma.transaction.update({
+      where: { id: transactionId },
+      data: {
+        // Use raw SQL increment since printCount might not be in schema yet
+        metadata: {
+          ...(transaction.metadata as object || {}),
+          printCount: ((transaction.metadata as any)?.printCount || 0) + 1,
+          lastPrintedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    return {
+      success: true,
+      printCount: ((updated.metadata as any)?.printCount || 1),
+      transactionId: transaction.id,
+      orderNumber: transaction.orderNumber,
     };
   }
 

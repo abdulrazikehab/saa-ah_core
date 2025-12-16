@@ -54,6 +54,11 @@ import { BrandModule } from './brand/brand.module';
 import { CurrencyModule } from './currency/currency.module';
 import { UnitModule } from './unit/unit.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { CardsModule } from './cards/cards.module';
+import { MerchantModule } from './merchant/merchant.module';
+import { IntegrationsModule } from './integrations/integrations.module';
+import { KycSettingsModule } from './kyc/kyc-settings.module';
+import { ApiKeyModule } from './api-key/api-key.module';
 
 @Module({
   // Main Application Module
@@ -122,6 +127,11 @@ import { NotificationsModule } from './notifications/notifications.module';
     CurrencyModule,
     UnitModule,
     NotificationsModule,
+    CardsModule, // Digital Cards Marketplace
+    MerchantModule, // Merchant Dealer App
+    IntegrationsModule,
+    KycSettingsModule,
+    ApiKeyModule,
   ],
   controllers: [AdminController],
   providers: [

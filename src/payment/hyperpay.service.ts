@@ -70,18 +70,19 @@ export class HyperPayService {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.result?.description || 'Checkout creation failed');
+        const error = await response.json() as { result?: { description?: string } };
+        throw new Error(error?.result?.description || 'Checkout creation failed');
       }
 
-      const data = await response.json();
+      const data = await response.json() as { id: string };
       
       return {
-        checkoutId: data.id,
-        redirectUrl: `${baseUrl}/v1/paymentWidgets.js?checkoutId=${data.id}`,
+        checkoutId: data?.id || '',
+        redirectUrl: `${baseUrl}/v1/paymentWidgets.js?checkoutId=${data?.id || ''}`,
       };
-    } catch (error: any) {
-      throw new Error(`HyperPay checkout failed: ${error.message}`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`HyperPay checkout failed: ${errorMessage}`);
     }
   }
 
@@ -107,18 +108,23 @@ export class HyperPayService {
         throw new Error('Failed to get payment status');
       }
 
-      const data = await response.json();
+      const data = await response.json() as {
+        result: { code: string; description: string };
+        id: string;
+        amount: string;
+        currency: string;
+      };
       
       // Check if payment was successful
-      const isSuccess = /^(000\.000\.|000\.100\.1|000\.[36])/.test(data.result.code);
+      const isSuccess = /^(000\.000\.|000\.100\.1|000\.[36])/.test(data?.result?.code || '');
       
       return {
         success: isSuccess,
-        status: data.result.code,
-        description: data.result.description,
-        transactionId: data.id,
-        amount: data.amount,
-        currency: data.currency,
+        status: data?.result?.code || '',
+        description: data?.result?.description || '',
+        transactionId: data?.id || '',
+        amount: data?.amount || '',
+        currency: data?.currency || '',
       };
     } catch (error: any) {
       throw new Error(`Failed to get payment status: ${error.message}`);
@@ -185,16 +191,16 @@ export class HyperPayService {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.result?.description || 'Refund failed');
+        const error = await response.json() as { result?: { description?: string } };
+        throw new Error(error?.result?.description || 'Refund failed');
       }
 
-      const data = await response.json();
+      const data = await response.json() as { id: string; amount: string };
       
       return {
         success: true,
-        refundId: data.id,
-        amount: data.amount,
+        refundId: data?.id || '',
+        amount: data?.amount || '',
       };
     } catch (error: any) {
       throw new Error(`Refund failed: ${error.message}`);

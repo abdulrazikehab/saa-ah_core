@@ -22,9 +22,10 @@ export class BrandController {
     @Headers('x-tenant-id') tenantIdHeader?: string
   ) {
     // Support both authenticated and public access
-    const tenantId = req.user?.tenantId || req.user?.id || req.tenantId || tenantIdHeader || process.env.DEFAULT_TENANT_ID;
-    if (!tenantId) {
-      throw new Error('Tenant ID is required');
+    const tenantId = req.user?.tenantId || req.user?.id || req.tenantId || tenantIdHeader || process.env.DEFAULT_TENANT_ID || 'default';
+    if (!tenantId || tenantId === 'system') {
+      // Return empty array if no valid tenant
+      return [];
     }
     return this.brandService.findAll(tenantId);
   }

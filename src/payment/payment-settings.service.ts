@@ -362,8 +362,8 @@ export class PaymentSettingsService {
       if (response.ok) {
         return { success: true, message: 'Connection successful' };
       } else {
-        const error = await response.json();
-        throw new Error(error.result?.description || 'Connection failed');
+        const error = await response.json() as { result?: { description?: string } };
+        throw new Error(error?.result?.description || 'Connection failed');
       }
     } catch (error: unknown) {
       const err = error as Error;

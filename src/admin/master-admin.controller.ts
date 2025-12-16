@@ -9,15 +9,22 @@ import {
   Query,
   Req,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { MasterAdminService } from './master-admin.service';
 import { PlanType, Status } from '@prisma/client';
 import { AdminApiKeyGuard } from '../guard/admin-api-key.guard';
+import { ApiKeyService } from '../api-key/api-key.service';
+import { CreateApiKeyDto } from '../api-key/dto/create-api-key.dto';
+import { UpdateApiKeyDto } from '../api-key/dto/update-api-key.dto';
 
 @UseGuards(AdminApiKeyGuard)
 @Controller('admin/master')
 export class MasterAdminController {
-  constructor(private readonly masterAdminService: MasterAdminService) {}
+  constructor(
+    private readonly masterAdminService: MasterAdminService,
+    private readonly apiKeyService: ApiKeyService,
+  ) {}
 
   // ==================== PLATFORM OVERVIEW ====================
 
@@ -399,5 +406,47 @@ export class MasterAdminController {
   @Post('reset-database')
   async resetDatabase() {
     return this.masterAdminService.resetDatabase();
+  }
+
+  // ==================== API KEY MANAGEMENT ====================
+
+  @Get('api-keys')
+  async getAllApiKeys(@Query('tenantId') tenantId?: string) {
+    if (tenantId) {
+      const apiKeys = await this.apiKeyService.findAll(tenantId);
+      return { apiKeys };
+    }
+    
+    // Get all API keys from all tenants
+    const allApiKeys = await this.apiKeyService.findAllForAllTenants();
+    return { apiKeys: allApiKeys };
+  }
+
+  @Post('api-keys')
+  async createApiKey(@Body() dto: CreateApiKeyDto & { tenantId: string }) {
+    if (!dto.tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+    return this.apiKeyService.create(dto.tenantId, { name: dto.name });
+  }
+
+  @Get('api-keys/:id')
+  async getApiKey(@Param('id') id: string) {
+    return this.apiKeyService.findOneForAdmin(id);
+  }
+
+  @Put('api-keys/:id')
+  async updateApiKey(@Param('id') id: string, @Body() dto: UpdateApiKeyDto) {
+    return this.apiKeyService.updateForAdmin(id, dto);
+  }
+
+  @Delete('api-keys/:id')
+  async deleteApiKey(@Param('id') id: string) {
+    return this.apiKeyService.removeForAdmin(id);
+  }
+
+  @Post('api-keys/:id/regenerate')
+  async regenerateApiKey(@Param('id') id: string) {
+    return this.apiKeyService.regenerateForAdmin(id);
   }
 }

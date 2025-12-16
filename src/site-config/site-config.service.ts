@@ -80,6 +80,16 @@ export class SiteConfigService {
 
     const tenantSettings = (tenant?.settings || {}) as Record<string, unknown>;
     
+    // Fetch currency settings (source of truth for base currency)
+    const currencySettings = await this.prisma.currencySettings.findUnique({
+      where: { tenantId },
+    });
+    
+    // Determine currency: CurrencySettings.baseCurrency > tenant.settings.currency > 'SAR'
+    const baseCurrency = currencySettings?.baseCurrency 
+      || (tenantSettings.currency as string)?.toUpperCase()
+      || 'SAR';
+    
     // If previewing a theme, fetch its draft settings
     let previewThemeSettings = {};
     if (themeId) {
@@ -121,7 +131,7 @@ export class SiteConfigService {
       city: '',
       country: 'SA',
       postalCode: '',
-      currency: 'SAR',
+      currency: baseCurrency,
       timezone: 'Asia/Riyadh',
       language: 'ar',
       taxEnabled: true,
@@ -153,6 +163,7 @@ export class SiteConfigService {
           ...defaultSettings,
           ...tenantSettings,
           ...previewThemeSettings,
+          currency: baseCurrency, // Ensure CurrencySettings.baseCurrency takes precedence
           paymentMethods,
           hyperpayConfig,
           subdomain: tenant?.subdomain,
@@ -170,6 +181,7 @@ export class SiteConfigService {
         ...defaultSettings,
         ...tenantSettings,
         ...previewThemeSettings,
+        currency: baseCurrency, // Ensure CurrencySettings.baseCurrency takes precedence
         // Include payment config from PaymentSettingsService in settings
         paymentMethods,
         hyperpayConfig,
@@ -218,6 +230,29 @@ export class SiteConfigService {
         where: { id: tenantId },
         data: { settings: restSettings },
       });
+
+      // Sync currency to CurrencySettings if currency was updated
+      if (restSettings.currency) {
+        const currencyCode = String(restSettings.currency).toUpperCase();
+        // Check if currency exists in Currency table
+        const currencyExists = await this.prisma.currency.findUnique({
+          where: {
+            tenantId_code: {
+              tenantId,
+              code: currencyCode,
+            },
+          },
+        });
+
+        // Only update CurrencySettings if the currency exists
+        if (currencyExists) {
+          await this.prisma.currencySettings.upsert({
+            where: { tenantId },
+            update: { baseCurrency: currencyCode },
+            create: { tenantId, baseCurrency: currencyCode },
+          });
+        }
+      }
     }
 
     // Always upsert SiteConfig (excluding payment methods which are handled by PaymentSettingsService)

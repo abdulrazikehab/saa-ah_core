@@ -19,7 +19,7 @@ export class WebhookService {
       },
     });
 
-    const results = [];
+    const results: { endpointId: string; success: boolean; error?: unknown }[] = [];
     for (const endpoint of endpoints) {
       try {
         // Create delivery record

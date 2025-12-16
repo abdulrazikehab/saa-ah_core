@@ -103,7 +103,31 @@ export class ProductController {
   @UseGuards(TenantRequiredGuard)
   remove(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
     const tenantId = this.ensureTenantId(req.tenantId);
-    return this.productService.remove(tenantId, id);
+    
+    // Decode the id in case it was URL encoded
+    let decodedId = id;
+    try {
+      decodedId = decodeURIComponent(id);
+    } catch (e) {
+      // If decoding fails, use original
+    }
+    
+    // Clean the ID - remove any URL encoding artifacts or extra characters
+    let cleanId = decodedId.trim();
+    
+    // If ID contains slashes or plus signs, try to extract the actual ID
+    if (cleanId.includes('/') || cleanId.includes('+')) {
+      const parts = cleanId.split(/[/+]/);
+      const validParts = parts.filter(part => {
+        const trimmed = part.trim();
+        return trimmed.length >= 20 && !trimmed.includes('/') && !trimmed.includes('+');
+      });
+      if (validParts.length > 0) {
+        cleanId = validParts.reduce((a, b) => a.length > b.length ? a : b).trim();
+      }
+    }
+    
+    return this.productService.remove(tenantId, cleanId);
   }
 
   @Patch('variants/:variantId/inventory')

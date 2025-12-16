@@ -258,9 +258,13 @@ export class TenantController {
       return null;
     }
     
-    let tenantId = req.user.tenantId;
+    let tenantId: string | null = req.user.tenantId || null;
     if (!tenantId) {
-       tenantId = await this.tenantService.getTenantIdByUserId(req.user.id);
+       const fetchedTenantId = await this.tenantService.getTenantIdByUserId(req.user.id);
+       if (!fetchedTenantId) {
+         throw new Error('Tenant ID not found');
+       }
+       tenantId = fetchedTenantId;
     }
 
     if (!tenantId) {
@@ -285,7 +289,7 @@ export class TenantController {
       throw new BadRequestException('User not authenticated');
     }
 
-    let tenantId = req.user.tenantId;
+    let tenantId: string | null = req.user.tenantId || null;
     
     // Fallback: fetch from DB if missing in token
     if (!tenantId) {

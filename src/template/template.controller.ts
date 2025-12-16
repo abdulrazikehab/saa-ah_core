@@ -48,6 +48,17 @@ export class TemplateController {
     return this.templateService.delete(id);
   }
 
+  /**
+   * Force re-seed all default templates
+   * POST /api/templates/reseed
+   */
+  @Post('reseed')
+  @Roles(UserRole.SUPER_ADMIN)
+  async reseedTemplates() {
+    await this.templateService.seedTemplates();
+    return { message: 'Templates reseeded successfully' };
+  }
+
   @Post('apply/:templateId/to-page/:pageId')
   @Roles(UserRole.SHOP_OWNER, UserRole.ADMIN)
   applyToPage(

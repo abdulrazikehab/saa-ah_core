@@ -183,6 +183,82 @@ export class UserService {
     }
   }
 
+  async updateUser(
+    tenantId: string,
+    userId: string,
+    updateData: { email?: string; name?: string; role?: string; avatar?: string },
+    updatedBy: string
+  ) {
+    try {
+      // Verify user exists and belongs to tenant
+      const existingUser = await this.prisma.user.findFirst({
+        where: {
+          id: userId,
+          tenantId,
+        },
+      });
+
+      if (!existingUser) {
+        throw new NotFoundException('User not found');
+      }
+
+      // Check if user has permission to update roles (only SHOP_OWNER or SUPER_ADMIN)
+      if (updateData.role) {
+        const updatingUser = await this.prisma.user.findFirst({
+          where: {
+            id: updatedBy,
+            tenantId,
+            role: { in: ['SHOP_OWNER', 'SUPER_ADMIN'] },
+          },
+        });
+
+        if (!updatingUser) {
+          throw new NotFoundException('Insufficient permissions to update user role');
+        }
+      }
+
+      // Check if email is already taken by another user in the same tenant
+      if (updateData.email && updateData.email !== existingUser.email) {
+        const emailExists = await this.prisma.user.findFirst({
+          where: {
+            email: updateData.email,
+            tenantId,
+            id: { not: userId },
+          },
+        });
+
+        if (emailExists) {
+          throw new NotFoundException('Email already taken');
+        }
+      }
+
+      const updatedUser = await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          ...(updateData.email && { email: updateData.email }),
+          ...(updateData.name !== undefined && { name: updateData.name }),
+          ...(updateData.role && { role: updateData.role as any }),
+          ...(updateData.avatar !== undefined && { avatar: updateData.avatar }),
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          avatar: true,
+          role: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      this.logger.log(`User updated: ${userId} by ${updatedBy}`);
+      return updatedUser;
+    } catch (error) {
+      this.logger.error(`Error updating user: ${error}`);
+      throw error;
+    }
+  }
+
   async deactivateUser(tenantId: string, userId: string, deactivatedBy: string) {
     try {
       // Verify user exists and belongs to tenant

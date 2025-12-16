@@ -84,18 +84,48 @@ export class TenantMiddleware implements NestMiddleware {
   }
 
   private extractSubdomain(hostname: string): string | null {
+    const normalizedHostname = hostname.toLowerCase().split(':')[0];
+    
     // Handle localhost
-    if (hostname.endsWith('.localhost')) {
-      return hostname.replace('.localhost', '');
+    if (normalizedHostname.endsWith('.localhost')) {
+      return normalizedHostname.replace('.localhost', '');
     }
     
-    // Handle production domains
-    const platformDomains = ["saa'ah.com", "app.saa'ah.com"]; 
+    // Handle saeaa.com and saeaa.net - main domains should NOT be treated as subdomain
+    const mainDomains = [
+      'saeaa.com',
+      'www.saeaa.com',
+      'saeaa.net',
+      'www.saeaa.net',
+      'app.saeaa.com',
+      'app.saeaa.net'
+    ];
+    if (mainDomains.includes(normalizedHostname)) {
+      return null; // Main domain, not a subdomain
+    }
     
+    // Handle subdomains of saeaa.com (e.g., store.saeaa.com)
+    if (normalizedHostname.endsWith('.saeaa.com')) {
+      const subdomain = normalizedHostname.replace('.saeaa.com', '');
+      if (subdomain && subdomain !== 'www' && subdomain !== 'app') {
+        return subdomain;
+      }
+    }
+    
+    // Handle subdomains of saeaa.net (e.g., store.saeaa.net)
+    if (normalizedHostname.endsWith('.saeaa.net')) {
+      const subdomain = normalizedHostname.replace('.saeaa.net', '');
+      if (subdomain && subdomain !== 'www' && subdomain !== 'app') {
+        return subdomain;
+      }
+    }
+    
+    // Legacy: Handle old domain format if still in use
+    const platformDomains = ["saa'ah.com", "app.saa'ah.com"]; 
     for (const domain of platformDomains) {
-      if (hostname.endsWith(domain)) {
-        const subdomain = hostname.replace(`.${domain}`, '');
-        if (subdomain !== hostname && subdomain !== 'www') {
+      if (normalizedHostname.endsWith(domain)) {
+        const subdomain = normalizedHostname.replace(`.${domain}`, '');
+        if (subdomain !== normalizedHostname && subdomain !== 'www') {
           return subdomain;
         }
       }

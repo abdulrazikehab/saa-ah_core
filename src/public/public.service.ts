@@ -31,7 +31,7 @@ export class PublicService {
 
       // Map to a format suitable for the landing page
       return {
-        partners: partners.map((partner) => ({
+        partners: partners.map((partner: any) => ({
           id: partner.id,
           name: partner.name,
           nameAr: partner.nameAr || partner.name,
@@ -79,7 +79,7 @@ export class PublicService {
       });
 
       return {
-        plans: plans.map((plan) => ({
+        plans: plans.map((plan: any) => ({
           ...plan,
           price: plan.price.toString(), // Convert Decimal to string for JSON
         })),
@@ -190,7 +190,7 @@ export class PublicService {
         },
       };
 
-      const providers = paymentMethods.map((pm) => providerDetails[pm.provider] || {
+      const providers = paymentMethods.map((pm: any) => providerDetails[pm.provider] || {
         id: pm.provider.toLowerCase(),
         name: pm.provider,
         nameAr: pm.provider,

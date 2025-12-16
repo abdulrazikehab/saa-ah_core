@@ -2,29 +2,29 @@ import { IsString, IsArray, IsOptional } from 'class-validator';
 
 export class CreateMarketplaceDto {
   @IsString()
-  name: string;
+  name!: string;
 
   @IsString()
-  nameAr: string;
+  nameAr!: string;
 
   @IsString()
-  category: string;
+  category!: string;
 
   @IsArray()
-  products: string[];
+  products!: string[];
 
   @IsString()
   @IsOptional()
-  logo: string;
+  logo?: string;
 
   @IsString()
-  template: string;
+  template!: string;
 
   @IsString()
-  reportFrequency: string;
+  reportFrequency!: string;
 
   @IsArray()
-  paymentGateways: string[];
+  paymentGateways!: string[];
 
   @IsOptional()
   templateContent?: any;

@@ -45,6 +45,26 @@ export class UserController {
     const limitNum = limit ? parseInt(limit, 10) : 50;
     return this.userService.getUsersByTenant(req.user.tenantId, pageNum, limitNum);
   }
+}
+
+// Alias controller for /users endpoint
+@UseGuards(JwtAuthGuard)
+@Controller('users')
+export class UsersController {
+  constructor(private readonly userService: UserService) {}
+
+  @Get()
+  async getUsers(
+    @Request() req: any,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 50;
+    const result = await this.userService.getUsersByTenant(req.user.tenantId, pageNum, limitNum);
+    // Return just the data array for compatibility
+    return result.data || result;
+  }
 
   @Get(':id')
   async getUserById(
@@ -52,6 +72,15 @@ export class UserController {
     @Param('id', ParseUUIDPipe) userId: string
   ) {
     return this.userService.getUserById(req.user.tenantId, userId);
+  }
+
+  @Put(':id')
+  async updateUser(
+    @Request() req: any,
+    @Param('id', ParseUUIDPipe) userId: string,
+    @Body() updateData: { email?: string; name?: string; role?: string; avatar?: string }
+  ) {
+    return this.userService.updateUser(req.user.tenantId, userId, updateData, req.user.id);
   }
 
   @Delete(':id')

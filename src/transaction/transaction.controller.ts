@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Param, ParseIntPipe, DefaultValuePipe } from '@nestjs/common';
+import { Controller, Get, Post, Query, Param, ParseIntPipe, DefaultValuePipe } from '@nestjs/common';
 import { TransactionService } from './transaction.service';
 import { TransactionStatus } from '@prisma/client';
 
@@ -55,5 +55,14 @@ export class TransactionController {
   @Get('subscription')
   async getSubscription(@Query('tenantId') tenantId: string) {
     return this.transactionService.getSubscriptionInfo(tenantId);
+  }
+
+  // Reprint transaction receipt and increment print count
+  @Post(':id/reprint')
+  async reprintTransaction(
+    @Param('id') id: string,
+    @Query('tenantId') tenantId: string,
+  ) {
+    return this.transactionService.reprintTransaction(tenantId, id);
   }
 }

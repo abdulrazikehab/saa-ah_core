@@ -11,6 +11,12 @@ export interface CreateSupplierDto {
   address?: string;
   discountRate?: number;
   notes?: string;
+  // API Configuration
+  apiEndpoint?: string;
+  apiKey?: string;
+  apiConfig?: any;
+  autoPurchaseEnabled?: boolean;
+  priceCheckInterval?: number;
 }
 
 export interface UpdateSupplierDto {
@@ -23,6 +29,12 @@ export interface UpdateSupplierDto {
   discountRate?: number;
   isActive?: boolean;
   notes?: string;
+  // API Configuration
+  apiEndpoint?: string;
+  apiKey?: string;
+  apiConfig?: any;
+  autoPurchaseEnabled?: boolean;
+  priceCheckInterval?: number;
 }
 
 @Injectable()
@@ -47,6 +59,11 @@ export class SupplierService {
         address: data.address,
         discountRate: data.discountRate || 0,
         notes: data.notes,
+        apiEndpoint: data.apiEndpoint,
+        apiKey: data.apiKey,
+        apiConfig: data.apiConfig,
+        autoPurchaseEnabled: data.autoPurchaseEnabled || false,
+        priceCheckInterval: data.priceCheckInterval,
       },
     });
 
@@ -96,6 +113,11 @@ export class SupplierService {
         discountRate: data.discountRate,
         isActive: data.isActive,
         notes: data.notes,
+        apiEndpoint: data.apiEndpoint,
+        apiKey: data.apiKey,
+        apiConfig: data.apiConfig,
+        autoPurchaseEnabled: data.autoPurchaseEnabled,
+        priceCheckInterval: data.priceCheckInterval,
       },
     });
 
@@ -118,17 +140,20 @@ export class SupplierService {
 
     if (productCount > 0) {
       // Soft delete by setting isActive to false
-      return this.prisma.supplier.update({
+      const updated = await this.prisma.supplier.update({
         where: { id },
         data: { isActive: false },
       });
+      this.logger.log(`Supplier soft deleted (deactivated): ${id} - used in ${productCount} products`);
+      return updated;
     }
 
     await this.prisma.supplier.delete({
       where: { id },
     });
 
-    this.logger.log(`Supplier deleted: ${id}`);
+    this.logger.log(`Supplier hard deleted: ${id}`);
+    return { id, deleted: true };
   }
 }
 

@@ -1,5 +1,7 @@
-// Pre-defined website templates
+// Pre-defined website templates using standard section types
 export const templateSeeds = [
+  // ========== WEBSITE TEMPLATES ==========
+
   // 1. Fashion Store Template
   {
     name: 'Fashion Store',
@@ -15,11 +17,12 @@ export const templateSeeds = [
           props: {
             title: 'Summer Collection 2024',
             subtitle: 'Discover the latest fashion trends',
-            backgroundImage: '',
+            backgroundImage: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1920&h=1080&fit=crop',
             ctaText: 'Shop Now',
             ctaLink: '/products',
             textColor: '#ffffff',
             backgroundColor: '#000000',
+            overlayOpacity: 0.5,
           },
         },
         {
@@ -31,6 +34,7 @@ export const templateSeeds = [
               { icon: '🚚', title: 'Free Shipping', description: 'On orders over $50' },
               { icon: '↩️', title: 'Easy Returns', description: '30-day return policy' },
               { icon: '👗', title: 'Latest Trends', description: 'Always in style' },
+              { icon: '💳', title: 'Secure Payment', description: '100% protected' },
             ],
           },
         },
@@ -56,6 +60,16 @@ export const templateSeeds = [
           },
         },
         {
+          id: 'newsletter-fashion',
+          type: 'newsletter',
+          props: {
+            title: 'Stay Updated',
+            description: 'Subscribe to our newsletter for the latest trends',
+            buttonText: 'Subscribe',
+            placeholder: 'Enter your email',
+          },
+        },
+        {
           id: 'footer-fashion',
           type: 'footer',
           props: {
@@ -66,16 +80,16 @@ export const templateSeeds = [
               { label: 'Shipping Info', url: '/shipping' },
             ],
             socialLinks: {
-              instagram: '',
-              facebook: '',
-              pinterest: '',
+              instagram: '#',
+              facebook: '#',
+              twitter: '#',
             },
           },
         },
       ],
     },
   },
-  
+
   // 2. Electronics Shop Template
   {
     name: 'Electronics Shop',
@@ -90,12 +104,13 @@ export const templateSeeds = [
           type: 'hero',
           props: {
             title: 'Cutting-Edge Technology',
-            subtitle: 'Latest gadgets and electronics',
-            backgroundImage: '',
+            subtitle: 'Latest gadgets and electronics at best prices',
+            backgroundImage: 'https://images.unsplash.com/photo-1498049794561-7780e7231661?w=1920&h=1080&fit=crop',
             ctaText: 'Browse Products',
             ctaLink: '/products',
             textColor: '#ffffff',
             backgroundColor: '#1e3a8a',
+            overlayOpacity: 0.6,
           },
         },
         {
@@ -107,6 +122,7 @@ export const templateSeeds = [
               { icon: '✅', title: 'Authentic Products', description: '100% genuine' },
               { icon: '🔧', title: 'Warranty Support', description: 'Full coverage' },
               { icon: '⚡', title: 'Fast Delivery', description: '2-day shipping' },
+              { icon: '🎧', title: '24/7 Support', description: 'Always here to help' },
             ],
           },
         },
@@ -120,6 +136,19 @@ export const templateSeeds = [
           },
         },
         {
+          id: 'stats-electronics',
+          type: 'stats',
+          props: {
+            title: 'Trusted by Thousands',
+            items: [
+              { number: '10K+', label: 'Happy Customers' },
+              { number: '500+', label: 'Products' },
+              { number: '99%', label: 'Satisfaction' },
+              { number: '24/7', label: 'Support' },
+            ],
+          },
+        },
+        {
           id: 'footer-electronics',
           type: 'footer',
           props: {
@@ -130,16 +159,16 @@ export const templateSeeds = [
               { label: 'Compare', url: '/compare' },
             ],
             socialLinks: {
-              twitter: '',
-              youtube: '',
-              linkedin: '',
+              twitter: '#',
+              youtube: '#',
+              linkedin: '#',
             },
           },
         },
       ],
     },
   },
-  
+
   // 3. Food & Beverage Template
   {
     name: 'Food & Beverage',
@@ -155,11 +184,12 @@ export const templateSeeds = [
           props: {
             title: 'Fresh, Delicious, Delivered',
             subtitle: 'Order your favorite meals online',
-            backgroundImage: '',
+            backgroundImage: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1920&h=1080&fit=crop',
             ctaText: 'View Menu',
             ctaLink: '/products',
             textColor: '#ffffff',
             backgroundColor: '#dc2626',
+            overlayOpacity: 0.5,
           },
         },
         {
@@ -171,6 +201,7 @@ export const templateSeeds = [
               { icon: '🍽️', title: 'Fresh Ingredients', description: 'Daily sourced' },
               { icon: '⏱️', title: 'Quick Delivery', description: 'Under 30 minutes' },
               { icon: '👨‍🍳', title: 'Expert Chefs', description: 'Award-winning' },
+              { icon: '🌿', title: 'Healthy Options', description: 'For every diet' },
             ],
           },
         },
@@ -181,6 +212,18 @@ export const templateSeeds = [
             title: 'Popular Dishes',
             limit: 6,
             layout: 'grid',
+          },
+        },
+        {
+          id: 'testimonials-food',
+          type: 'testimonials',
+          props: {
+            title: 'What Our Customers Say',
+            items: [
+              { name: 'Sarah M.', text: 'Best food delivery service! Always fresh and on time.', rating: 5 },
+              { name: 'Ahmed K.', text: 'Amazing variety and great taste. Highly recommend!', rating: 5 },
+              { name: 'Lisa R.', text: 'My go-to for weekend meals. Never disappoints!', rating: 5 },
+            ],
           },
         },
         {
@@ -198,7 +241,7 @@ export const templateSeeds = [
       ],
     },
   },
-  
+
   // 4. Beauty & Cosmetics Template
   {
     name: 'Beauty & Cosmetics',
@@ -214,11 +257,12 @@ export const templateSeeds = [
           props: {
             title: 'Discover Your Beauty',
             subtitle: 'Premium skincare and cosmetics',
-            backgroundImage: '',
+            backgroundImage: 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=1920&h=1080&fit=crop',
             ctaText: 'Shop Collection',
             ctaLink: '/products',
             textColor: '#ffffff',
             backgroundColor: '#db2777',
+            overlayOpacity: 0.4,
           },
         },
         {
@@ -230,6 +274,7 @@ export const templateSeeds = [
               { icon: '🌿', title: 'Natural Ingredients', description: 'Cruelty-free' },
               { icon: '💝', title: 'Luxury Quality', description: 'Premium brands' },
               { icon: '✨', title: 'Expert Advice', description: 'Beauty consultations' },
+              { icon: '🎁', title: 'Free Samples', description: 'With every order' },
             ],
           },
         },
@@ -242,10 +287,33 @@ export const templateSeeds = [
             layout: 'grid',
           },
         },
+        {
+          id: 'brands-beauty',
+          type: 'brands',
+          props: {
+            title: 'Featured Brands',
+            logos: [
+              { name: 'Brand 1', url: 'https://via.placeholder.com/150x50' },
+              { name: 'Brand 2', url: 'https://via.placeholder.com/150x50' },
+              { name: 'Brand 3', url: 'https://via.placeholder.com/150x50' },
+              { name: 'Brand 4', url: 'https://via.placeholder.com/150x50' },
+            ],
+          },
+        },
+        {
+          id: 'newsletter-beauty',
+          type: 'newsletter',
+          props: {
+            title: 'Join the Beauty Club',
+            description: 'Get exclusive offers and beauty tips',
+            buttonText: 'Subscribe',
+            placeholder: 'Your email address',
+          },
+        },
       ],
     },
   },
-  
+
   // 5. Home & Furniture Template
   {
     name: 'Home & Furniture',
@@ -261,11 +329,12 @@ export const templateSeeds = [
           props: {
             title: 'Transform Your Space',
             subtitle: 'Quality furniture for every room',
-            backgroundImage: '',
+            backgroundImage: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=1920&h=1080&fit=crop',
             ctaText: 'Browse Furniture',
             ctaLink: '/products',
             textColor: '#ffffff',
             backgroundColor: '#059669',
+            overlayOpacity: 0.5,
           },
         },
         {
@@ -277,6 +346,7 @@ export const templateSeeds = [
               { icon: '🏠', title: 'Quality Craftsmanship', description: 'Built to last' },
               { icon: '🚚', title: 'White Glove Delivery', description: 'Assembly included' },
               { icon: '💲', title: 'Best Prices', description: 'Price match guarantee' },
+              { icon: '🔄', title: 'Easy Returns', description: '30-day policy' },
             ],
           },
         },
@@ -289,130 +359,794 @@ export const templateSeeds = [
             layout: 'grid',
           },
         },
+        {
+          id: 'gallery-home',
+          type: 'gallery',
+          props: {
+            title: 'Room Inspiration',
+            images: [
+              { url: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=600&h=400&fit=crop', alt: 'Living Room' },
+              { url: 'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=600&h=400&fit=crop', alt: 'Bedroom' },
+              { url: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=600&h=400&fit=crop', alt: 'Kitchen' },
+            ],
+          },
+        },
+        {
+          id: 'contact-home',
+          type: 'contact',
+          props: {
+            title: 'Need Design Help?',
+            description: 'Our interior design experts are here to help',
+            phone: '+1 234 567 890',
+            email: 'design@store.com',
+            address: '123 Furniture Street',
+          },
+        },
       ],
     },
   },
-  
-  // 6. Digital Products/Gift Cards (Purple Cards Style)
+
+  // 6. Digital Cards Marketplace (Arabic)
   {
-    name: 'Digital Products Store',
+    name: 'متجر البطاقات الرقمية',
     category: 'digital',
-    description: 'Modern card-based design for digital products and gift cards, inspired by Purple Cards',
-    thumbnail: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=800&h=600&fit=crop',
+    description: 'متجر شامل للبطاقات الرقمية مع تسليم فوري | Complete digital cards store with instant delivery',
+    thumbnail: 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=800&h=600&fit=crop',
     isDefault: true,
     content: {
       sections: [
         {
-          id: 'hero-digital',
+          id: 'hero-cards',
           type: 'hero',
           props: {
-            title: 'Your Instant Digital Store',
-            subtitle: 'Get your digital products and gift cards instantly',
-            backgroundGradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            showSearchBar: true,
-            searchPlaceholder: 'Search for games, cards, vouchers...',
-            ctaText: 'Browse Products',
+            title: 'بطاقات رقمية بضغطة زر ⚡',
+            subtitle: 'iTunes | Google Play | PlayStation | Xbox | Steam | PUBG | Netflix - تسليم فوري خلال ثوانٍ',
+            backgroundImage: 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=1920&h=1080&fit=crop',
+            ctaText: 'تصفح جميع البطاقات',
             ctaLink: '/products',
             textColor: '#ffffff',
-            overlayOpacity: 0.7,
+            backgroundColor: '#8b5cf6',
+            overlayOpacity: 0.75,
           },
         },
         {
-          id: 'categories-digital',
-          type: 'categoryGrid',
+          id: 'features-cards',
+          type: 'features',
           props: {
-            title: 'Shop by Category',
-            layout: 'grid',
-            columns: 4,
-            showIcons: true,
-            categories: [
-              { name: 'Gaming', icon: '🎮', link: '/category/gaming' },
-              { name: 'Mobile Data', icon: '📱', link: '/category/mobile' },
-              { name: 'Entertainment', icon: '🎬', link: '/category/entertainment' },
-              { name: 'App Stores', icon: '📦', link: '/category/app-stores' },
-              { name: 'Voice Chat', icon: '🎤', link: '/category/voice-chat' },
-              { name: 'E-Services', icon: '⚡', link: '/category/e-services' },
-              { name: 'Delivery', icon: '🚚', link: '/category/delivery' },
-              { name: 'Game Console', icon: '🎯', link: '/category/console' },
+            title: 'لماذا تختارنا؟',
+            subtitle: 'نوفر لك أفضل تجربة شراء للبطاقات الرقمية',
+            items: [
+              { icon: '⚡', title: 'تسليم فوري', description: 'احصل على كود البطاقة في ثوانٍ معدودة' },
+              { icon: '🔒', title: 'دفع آمن 100%', description: 'حماية كاملة لمعلوماتك المالية' },
+              { icon: '💰', title: 'أفضل الأسعار', description: 'أسعار تنافسية مع عروض يومية' },
+              { icon: '🎁', title: 'هدايا مجانية', description: 'نقاط ولاء وخصومات حصرية' },
+              { icon: '🕐', title: 'خدمة 24/7', description: 'دعم فني على مدار الساعة' },
+              { icon: '📱', title: 'سهل الاستخدام', description: 'تطبيق ويب سريع وبسيط' },
             ],
           },
         },
         {
-          id: 'products-digital',
-          type: 'productsWithBadges',
+          id: 'brands-cards',
+          type: 'brands',
           props: {
-            title: 'Featured Products',
-            showDiscountBadges: true,
-            layout: 'card',
+            title: 'أشهر العلامات التجارية',
+            subtitle: 'نوفر بطاقات من أكثر من 50 علامة تجارية عالمية',
+            logos: [
+              { name: 'iTunes', url: 'https://via.placeholder.com/150x80?text=iTunes' },
+              { name: 'Google Play', url: 'https://via.placeholder.com/150x80?text=Google+Play' },
+              { name: 'PlayStation', url: 'https://via.placeholder.com/150x80?text=PlayStation' },
+              { name: 'Xbox', url: 'https://via.placeholder.com/150x80?text=Xbox' },
+              { name: 'Steam', url: 'https://via.placeholder.com/150x80?text=Steam' },
+              { name: 'Netflix', url: 'https://via.placeholder.com/150x80?text=Netflix' },
+              { name: 'PUBG', url: 'https://via.placeholder.com/150x80?text=PUBG' },
+              { name: 'Free Fire', url: 'https://via.placeholder.com/150x80?text=Free+Fire' },
+            ],
+          },
+        },
+        {
+          id: 'products-cards',
+          type: 'products',
+          props: {
+            title: 'البطاقات الأكثر مبيعاً 🔥',
+            subtitle: 'اكتشف أشهر البطاقات المتوفرة لدينا',
             limit: 12,
-            cardStyle: 'modern',
+            layout: 'grid',
           },
         },
         {
-          id: 'testimonials-digital',
-          type: 'testimonialsCarousel',
+          id: 'slider-howto',
+          type: 'content-slider',
           props: {
-            title: 'What Our Customers Say',
-            showRatings: true,
-            autoPlay: true,
-            testimonials: [
-              { name: 'Customer 1', rating: 5, comment: 'Fast and reliable service!' },
-              { name: 'Customer 2', rating: 5, comment: 'Great prices and instant delivery' },
-              { name: 'Customer 3', rating: 5, comment: 'Best digital cards store' },
+            title: 'كيف تشتري بطاقة رقمية؟',
+            subtitle: 'عملية بسيطة في 3 خطوات فقط',
+            items: [
+              {
+                title: '1️⃣ اختر البطاقة',
+                description: 'تصفح المتجر واختر البطاقة التي تريدها',
+                icon: '🔍',
+              },
+              {
+                title: '2️⃣ ادفع بأمان',
+                description: 'ادفع باستخدام بطاقتك أو محفظتك الإلكترونية',
+                icon: '💳',
+              },
+              {
+                title: '3️⃣ استلم فوراً',
+                description: 'احصل على كود البطاقة مباشرة في حسابك',
+                icon: '✅',
+              },
             ],
           },
         },
         {
-          id: 'trust-badges-digital',
-          type: 'trustBadges',
+          id: 'stats-cards',
+          type: 'stats',
           props: {
-            badges: [
-              { icon: '🔒', text: 'Secure Payment' },
-              { icon: '⚡', text: 'Instant Delivery' },
-              { icon: '💳', text: 'Multiple Payment Methods' },
-              { icon: '🎁', text: 'Loyalty Points' },
+            title: 'نحن الأوثق في السوق',
+            items: [
+              { number: '+15,000', label: 'عميل راضٍ' },
+              { number: '+100,000', label: 'بطاقة مُسلّمة' },
+              { number: '4.9/5', label: 'تقييم العملاء' },
+              { number: '< 10 ثانية', label: 'وقت التسليم' },
             ],
           },
         },
         {
-          id: 'footer-digital',
-          type: 'footerMultiColumn',
+          id: 'testimonials-cards',
+          type: 'testimonials',
           props: {
-            companyName: 'Digital Store',
-            columns: [
-              {
-                title: 'Categories',
-                links: [
-                  { label: 'Games', url: '/category/games' },
-                  { label: 'Mobile Data', url: '/category/mobile' },
-                  { label: 'Entertainment', url: '/category/entertainment' },
-                ],
+            title: 'آراء عملائنا',
+            subtitle: 'ماذا يقول من جرب خدماتنا',
+            items: [
+              { 
+                name: 'أحمد محمد', 
+                text: 'أفضل موقع لشراء البطاقات الرقمية! سريع وآمن ومصداقية عالية 👍', 
+                rating: 5,
+                image: 'https://ui-avatars.com/api/?name=Ahmed+M&background=8b5cf6&color=fff',
               },
-              {
-                title: 'Help',
-                links: [
-                  { label: 'FAQ', url: '/faq' },
-                  { label: 'Help Center', url: '/help' },
-                  { label: 'Contact Us', url: '/contact' },
-                ],
+              { 
+                name: 'سارة العلي', 
+                text: 'استلمت البطاقة في أقل من دقيقة. خدمة ممتازة وأسعار منافسة 🌟', 
+                rating: 5,
+                image: 'https://ui-avatars.com/api/?name=Sarah+A&background=ec4899&color=fff',
               },
-              {
-                title: 'About',
-                links: [
-                  { label: 'About Us', url: '/about' },
-                  { label: 'Privacy Policy', url: '/privacy' },
-                  { label: 'Terms & Conditions', url: '/terms' },
-                ],
+              { 
+                name: 'خالد السعيد', 
+                text: 'تعاملت معهم أكثر من 10 مرات، دائماً موثوقين ومحترمين 💯', 
+                rating: 5,
+                image: 'https://ui-avatars.com/api/?name=Khaled+S&background=10b981&color=fff',
               },
+            ],
+          },
+        },
+        {
+          id: 'faq-cards',
+          type: 'faq',
+          props: {
+            title: 'الأسئلة الشائعة',
+            subtitle: 'إجابات لأكثر الأسئلة تكراراً',
+            items: [
+              { 
+                question: 'كم يستغرق استلام البطاقة؟', 
+                answer: 'يتم تسليم البطاقة فوراً خلال ثوانٍ معدودة بعد إتمام الدفع بنجاح. ستجد الكود في حسابك وعبر البريد الإلكتروني.' 
+              },
+              { 
+                question: 'هل الدفع آمن؟', 
+                answer: 'نعم، نستخدم أحدث تقنيات التشفير وبوابات دفع معتمدة عالمياً لحماية معلوماتك المالية بنسبة 100%.' 
+              },
+              { 
+                question: 'هل يمكنني استرجاع البطاقة؟', 
+                answer: 'للأسف لا يمكن استرجاع البطاقات الرقمية بعد تسليم الكود. يرجى التأكد من البطاقة قبل الشراء.' 
+              },
+              { 
+                question: 'هل تدعمون الدفع عند الاستلام؟', 
+                answer: 'نظراً لطبيعة المنتج الرقمي، نقبل فقط الدفع الإلكتروني (بطاقات بنكية، Apple Pay، تحويل بنكي).' 
+              },
+              { 
+                question: 'ماذا لو لم يعمل الكود؟', 
+                answer: 'نادراً ما يحدث ذلك، ولكن إذا واجهت أي مشكلة يرجى التواصل معنا فوراً وسنقوم بحل المشكلة أو استبدال البطاقة.' 
+              },
+            ],
+          },
+        },
+        {
+          id: 'payments-cards',
+          type: 'payments',
+          props: {
+            title: 'طرق الدفع المتاحة',
+            subtitle: 'نقبل جميع وسائل الدفع الإلكترونية',
+            methods: ['Visa', 'Mastercard', 'Apple Pay', 'مدى', 'STC Pay', 'تحويل بنكي'],
+          },
+        },
+        {
+          id: 'cta-cards',
+          type: 'cta',
+          props: {
+            title: 'جاهز لشراء بطاقتك الأولى؟ 🎮',
+            description: 'سجل الآن واحصل على خصم 10% على أول عملية شراء',
+            buttonText: 'ابدأ التسوق الآن',
+            buttonLink: '/products',
+            backgroundColor: '#8b5cf6',
+            textColor: '#ffffff',
+          },
+        },
+        {
+          id: 'footer-cards',
+          type: 'footer',
+          props: {
+            companyName: 'متجر البطاقات الرقمية',
+            description: 'منصة موثوقة لشراء البطاقات الرقمية مع تسليم فوري وأسعار منافسة',
+            links: [
+              { label: 'من نحن', url: '/about' },
+              { label: 'اتصل بنا', url: '/contact' },
+              { label: 'الشروط والأحكام', url: '/terms' },
+              { label: 'سياسة الخصوصية', url: '/privacy' },
             ],
             socialLinks: {
-              twitter: '',
-              facebook: '',
-              instagram: '',
+              twitter: '#',
+              instagram: '#',
+              whatsapp: '#',
+              telegram: '#',
             },
           },
         },
       ],
     },
   },
+
+  // 7. Landing Page Template
+  {
+    name: 'Landing Page',
+    category: 'general',
+    description: 'High-converting landing page for products or services',
+    thumbnail: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&h=600&fit=crop',
+    isDefault: true,
+    content: {
+      sections: [
+        {
+          id: 'hero-landing',
+          type: 'hero',
+          props: {
+            title: 'Launch Your Business Today',
+            subtitle: 'Everything you need to start selling online',
+            backgroundImage: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1920&h=1080&fit=crop',
+            ctaText: 'Get Started Free',
+            ctaLink: '/auth/signup',
+            textColor: '#ffffff',
+            backgroundColor: '#2563eb',
+            overlayOpacity: 0.6,
+          },
+        },
+        {
+          id: 'features-landing',
+          type: 'features',
+          props: {
+            title: 'Everything You Need',
+            items: [
+              { icon: '🛒', title: 'Easy Store Setup', description: 'Launch in minutes' },
+              { icon: '📊', title: 'Analytics', description: 'Track your growth' },
+              { icon: '💳', title: 'Payments', description: 'Accept all methods' },
+              { icon: '📱', title: 'Mobile Ready', description: 'Works everywhere' },
+            ],
+          },
+        },
+        {
+          id: 'stats-landing',
+          type: 'stats',
+          props: {
+            title: 'Trusted by Thousands',
+            items: [
+              { number: '50K+', label: 'Active Stores' },
+              { number: '$100M+', label: 'Sales Processed' },
+              { number: '99.9%', label: 'Uptime' },
+              { number: '150+', label: 'Countries' },
+            ],
+          },
+        },
+        {
+          id: 'pricing-landing',
+          type: 'pricing',
+          props: {
+            title: 'Simple, Transparent Pricing',
+            plans: [
+              { 
+                name: 'Starter', 
+                price: '$9/mo', 
+                features: ['100 Products', 'Basic Analytics', 'Email Support'],
+                buttonText: 'Start Free Trial',
+                popular: false,
+              },
+              { 
+                name: 'Professional', 
+                price: '$29/mo', 
+                features: ['Unlimited Products', 'Advanced Analytics', 'Priority Support', 'Custom Domain'],
+                buttonText: 'Start Free Trial',
+                popular: true,
+              },
+              { 
+                name: 'Enterprise', 
+                price: '$99/mo', 
+                features: ['Everything in Pro', 'Dedicated Manager', 'API Access', 'White Label'],
+                buttonText: 'Contact Sales',
+                popular: false,
+              },
+            ],
+          },
+        },
+        {
+          id: 'testimonials-landing',
+          type: 'testimonials',
+          props: {
+            title: 'What Our Customers Say',
+            items: [
+              { name: 'John D.', text: 'Best decision for my business. Sales doubled in 3 months!', rating: 5, company: 'Tech Store' },
+              { name: 'Maria S.', text: 'So easy to use. I launched my store in one day.', rating: 5, company: 'Fashion Boutique' },
+              { name: 'Alex T.', text: 'Amazing support team. They helped me every step of the way.', rating: 5, company: 'Food Delivery' },
+            ],
+          },
+        },
+        {
+          id: 'faq-landing',
+          type: 'faq',
+          props: {
+            title: 'Frequently Asked Questions',
+            items: [
+              { question: 'How do I get started?', answer: 'Simply sign up for a free trial and follow our setup wizard.' },
+              { question: 'Can I cancel anytime?', answer: 'Yes, you can cancel your subscription at any time with no penalties.' },
+              { question: 'Do you offer support?', answer: 'Yes, we offer 24/7 support via chat, email, and phone.' },
+              { question: 'Is there a free plan?', answer: 'Yes, we offer a 14-day free trial with all features included.' },
+            ],
+          },
+        },
+        {
+          id: 'cta-landing',
+          type: 'cta',
+          props: {
+            title: 'Ready to Get Started?',
+            description: 'Join thousands of successful businesses today',
+            buttonText: 'Start Your Free Trial',
+            buttonLink: '/auth/signup',
+            backgroundColor: '#2563eb',
+            textColor: '#ffffff',
+          },
+        },
+      ],
+    },
+  },
+
+  // 8. Simple Store Template
+  {
+    name: 'Simple Store',
+    category: 'general',
+    description: 'Clean, minimal template for any type of store',
+    thumbnail: 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=800&h=600&fit=crop',
+    isDefault: true,
+    content: {
+      sections: [
+        {
+          id: 'hero-simple',
+          type: 'hero',
+          props: {
+            title: 'Welcome to Our Store',
+            subtitle: 'Discover amazing products',
+            ctaText: 'Shop Now',
+            ctaLink: '/products',
+            textColor: '#ffffff',
+            backgroundColor: '#111827',
+          },
+        },
+        {
+          id: 'products-simple',
+          type: 'products',
+          props: {
+            title: 'Our Products',
+            limit: 8,
+            layout: 'grid',
+          },
+        },
+        {
+          id: 'cta-simple',
+          type: 'cta',
+          props: {
+            title: 'Need Help?',
+            description: 'Contact us for any questions',
+            buttonText: 'Contact Us',
+            buttonLink: '/contact',
+            backgroundColor: '#111827',
+            textColor: '#ffffff',
+          },
+        },
+        {
+          id: 'footer-simple',
+          type: 'footer',
+          props: {
+            companyName: 'Our Store',
+            links: [
+              { label: 'About', url: '/about' },
+              { label: 'Contact', url: '/contact' },
+              { label: 'Privacy', url: '/privacy' },
+            ],
+          },
+        },
+      ],
+    },
+  },
+
+  // 9. Blank Template
+  {
+    name: 'Blank Template',
+    category: 'general',
+    description: 'Start from scratch with an empty page',
+    thumbnail: 'https://images.unsplash.com/photo-1557683316-973673baf926?w=800&h=600&fit=crop',
+    isDefault: true,
+    content: {
+      sections: [],
+    },
+  },
+
+  // 10. Restaurant/Cafe Template
+  {
+    name: 'Restaurant & Cafe',
+    category: 'food',
+    description: 'Elegant template for restaurants and cafes',
+    thumbnail: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop',
+    isDefault: true,
+    content: {
+      sections: [
+        {
+          id: 'hero-restaurant',
+          type: 'hero',
+          props: {
+            title: 'Experience Fine Dining',
+            subtitle: 'Reserve your table today',
+            backgroundImage: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1920&h=1080&fit=crop',
+            ctaText: 'Book a Table',
+            ctaLink: '/contact',
+            textColor: '#ffffff',
+            backgroundColor: '#1f2937',
+            overlayOpacity: 0.5,
+          },
+        },
+        {
+          id: 'text-restaurant',
+          type: 'text',
+          props: {
+            title: 'Our Story',
+            content: 'Founded in 2010, our restaurant has been serving exceptional cuisine with passion and dedication. Every dish tells a story of tradition, innovation, and love for great food.',
+            alignment: 'center',
+          },
+        },
+        {
+          id: 'gallery-restaurant',
+          type: 'gallery',
+          props: {
+            title: 'Our Ambiance',
+            images: [
+              { url: 'https://images.unsplash.com/photo-1559329007-40df8a9345d8?w=600&h=400&fit=crop', alt: 'Interior' },
+              { url: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=600&h=400&fit=crop', alt: 'Food' },
+              { url: 'https://images.unsplash.com/photo-1485182708500-e8f1f318ba72?w=600&h=400&fit=crop', alt: 'Dessert' },
+            ],
+          },
+        },
+        {
+          id: 'products-restaurant',
+          type: 'products',
+          props: {
+            title: 'Our Menu',
+            limit: 6,
+            layout: 'grid',
+          },
+        },
+        {
+          id: 'contact-restaurant',
+          type: 'contact',
+          props: {
+            title: 'Make a Reservation',
+            description: 'Call us or fill out the form below',
+            phone: '+1 234 567 890',
+            email: 'reservations@restaurant.com',
+            address: '123 Gourmet Street, Food City',
+          },
+        },
+      ],
+    },
+  },
+
+  // 11. Services Business Template
+  {
+    name: 'Services Business',
+    category: 'services',
+    description: 'Professional template for service-based businesses',
+    thumbnail: 'https://images.unsplash.com/photo-1521737711867-e3b97375f902?w=800&h=600&fit=crop',
+    isDefault: true,
+    content: {
+      sections: [
+        {
+          id: 'hero-services',
+          type: 'hero',
+          props: {
+            title: 'Professional Services',
+            subtitle: 'Solutions that drive results',
+            backgroundImage: 'https://images.unsplash.com/photo-1521737711867-e3b97375f902?w=1920&h=1080&fit=crop',
+            ctaText: 'Get a Quote',
+            ctaLink: '/contact',
+            textColor: '#ffffff',
+            backgroundColor: '#0f172a',
+            overlayOpacity: 0.6,
+          },
+        },
+        {
+          id: 'features-services',
+          type: 'features',
+          props: {
+            title: 'Our Services',
+            items: [
+              { icon: '💼', title: 'Consulting', description: 'Expert business advice' },
+              { icon: '📈', title: 'Strategy', description: 'Growth planning' },
+              { icon: '🎯', title: 'Marketing', description: 'Digital campaigns' },
+              { icon: '🤝', title: 'Support', description: '24/7 assistance' },
+            ],
+          },
+        },
+        {
+          id: 'stats-services',
+          type: 'stats',
+          props: {
+            title: 'Our Track Record',
+            items: [
+              { number: '500+', label: 'Projects Completed' },
+              { number: '98%', label: 'Client Satisfaction' },
+              { number: '15+', label: 'Years Experience' },
+              { number: '50+', label: 'Team Members' },
+            ],
+          },
+        },
+        {
+          id: 'testimonials-services',
+          type: 'testimonials',
+          props: {
+            title: 'Client Success Stories',
+            items: [
+              { name: 'David M.', text: 'They transformed our business. Highly recommended!', rating: 5, company: 'Tech Corp' },
+              { name: 'Sarah L.', text: 'Professional team with excellent results.', rating: 5, company: 'Finance Inc' },
+              { name: 'Mike R.', text: 'Best investment we made for our company.', rating: 5, company: 'Retail Co' },
+            ],
+          },
+        },
+        {
+          id: 'team-services',
+          type: 'team',
+          props: {
+            title: 'Meet Our Team',
+            members: [
+              { name: 'John Smith', role: 'CEO', image: 'https://via.placeholder.com/200x200' },
+              { name: 'Jane Doe', role: 'COO', image: 'https://via.placeholder.com/200x200' },
+              { name: 'Mike Johnson', role: 'CTO', image: 'https://via.placeholder.com/200x200' },
+            ],
+          },
+        },
+        {
+          id: 'contact-services',
+          type: 'contact',
+          props: {
+            title: 'Let\'s Work Together',
+            description: 'Ready to start your project?',
+            phone: '+1 234 567 890',
+            email: 'contact@services.com',
+            address: '123 Business Ave',
+          },
+        },
+      ],
+    },
+  },
+
+  // 12. Digital Cards Template
+  {
+    name: 'Digital Cards',
+    category: 'digital',
+    description: 'Complete digital cards marketplace template with instant delivery features',
+    thumbnail: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=800&h=600&fit=crop',
+    isDefault: true,
+    content: {
+      sections: [
+        {
+          id: 'hero-digital-cards',
+          type: 'hero',
+          props: {
+            title: 'Digital Cards at Your Fingertips ⚡',
+            subtitle: 'iTunes | Google Play | PlayStation | Xbox | Steam | PUBG | Netflix - Instant delivery in seconds',
+            backgroundImage: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1920&h=1080&fit=crop',
+            ctaText: 'Browse All Cards',
+            ctaLink: '/products',
+            textColor: '#ffffff',
+            backgroundColor: '#6366f1',
+            overlayOpacity: 0.75,
+          },
+        },
+        {
+          id: 'features-digital-cards',
+          type: 'features',
+          props: {
+            title: 'Why Choose Us?',
+            subtitle: 'We provide the best digital card buying experience',
+            items: [
+              { icon: '⚡', title: 'Instant Delivery', description: 'Get your card code in seconds' },
+              { icon: '🔒', title: '100% Secure Payment', description: 'Complete protection for your financial information' },
+              { icon: '💰', title: 'Best Prices', description: 'Competitive prices with daily offers' },
+              { icon: '🎁', title: 'Free Gifts', description: 'Loyalty points and exclusive discounts' },
+              { icon: '🕐', title: '24/7 Service', description: 'Technical support around the clock' },
+              { icon: '📱', title: 'Easy to Use', description: 'Fast and simple web application' },
+            ],
+          },
+        },
+        {
+          id: 'brands-digital-cards',
+          type: 'brands',
+          props: {
+            title: 'Popular Brands',
+            subtitle: 'We provide cards from more than 50 global brands',
+            logos: [
+              { name: 'iTunes', url: 'https://via.placeholder.com/150x80?text=iTunes' },
+              { name: 'Google Play', url: 'https://via.placeholder.com/150x80?text=Google+Play' },
+              { name: 'PlayStation', url: 'https://via.placeholder.com/150x80?text=PlayStation' },
+              { name: 'Xbox', url: 'https://via.placeholder.com/150x80?text=Xbox' },
+              { name: 'Steam', url: 'https://via.placeholder.com/150x80?text=Steam' },
+              { name: 'Netflix', url: 'https://via.placeholder.com/150x80?text=Netflix' },
+              { name: 'PUBG', url: 'https://via.placeholder.com/150x80?text=PUBG' },
+              { name: 'Free Fire', url: 'https://via.placeholder.com/150x80?text=Free+Fire' },
+            ],
+          },
+        },
+        {
+          id: 'products-digital-cards',
+          type: 'products',
+          props: {
+            title: 'Best Selling Cards 🔥',
+            subtitle: 'Discover our most popular cards',
+            limit: 12,
+            layout: 'grid',
+          },
+        },
+        {
+          id: 'slider-howto-digital-cards',
+          type: 'content-slider',
+          props: {
+            title: 'How to Buy a Digital Card?',
+            subtitle: 'Simple process in just 3 steps',
+            items: [
+              {
+                title: '1️⃣ Choose Your Card',
+                description: 'Browse the store and select the card you want',
+                icon: '🔍',
+              },
+              {
+                title: '2️⃣ Pay Securely',
+                description: 'Pay using your card or e-wallet',
+                icon: '💳',
+              },
+              {
+                title: '3️⃣ Receive Instantly',
+                description: 'Get your card code directly in your account',
+                icon: '✅',
+              },
+            ],
+          },
+        },
+        {
+          id: 'stats-digital-cards',
+          type: 'stats',
+          props: {
+            title: 'We Are the Most Trusted in the Market',
+            items: [
+              { number: '+15,000', label: 'Satisfied Customers' },
+              { number: '+100,000', label: 'Cards Delivered' },
+              { number: '4.9/5', label: 'Customer Rating' },
+              { number: '< 10 seconds', label: 'Delivery Time' },
+            ],
+          },
+        },
+        {
+          id: 'testimonials-digital-cards',
+          type: 'testimonials',
+          props: {
+            title: 'What Our Customers Say',
+            subtitle: 'See what those who tried our services say',
+            items: [
+              { 
+                name: 'Ahmed Mohamed', 
+                text: 'Best site to buy digital cards! Fast, secure and highly reliable 👍', 
+                rating: 5,
+                image: 'https://ui-avatars.com/api/?name=Ahmed+M&background=6366f1&color=fff',
+              },
+              { 
+                name: 'Sarah Ali', 
+                text: 'Received the card in less than a minute. Excellent service and competitive prices 🌟', 
+                rating: 5,
+                image: 'https://ui-avatars.com/api/?name=Sarah+A&background=ec4899&color=fff',
+              },
+              { 
+                name: 'Khaled Saeed', 
+                text: 'Dealt with them more than 10 times, always reliable and professional 💯', 
+                rating: 5,
+                image: 'https://ui-avatars.com/api/?name=Khaled+S&background=10b981&color=fff',
+              },
+            ],
+          },
+        },
+        {
+          id: 'faq-digital-cards',
+          type: 'faq',
+          props: {
+            title: 'Frequently Asked Questions',
+            subtitle: 'Answers to the most common questions',
+            items: [
+              { 
+                question: 'How long does it take to receive the card?', 
+                answer: 'The card is delivered instantly within seconds after successful payment. You will find the code in your account and via email.' 
+              },
+              { 
+                question: 'Is payment secure?', 
+                answer: 'Yes, we use the latest encryption technologies and globally approved payment gateways to protect your financial information 100%.' 
+              },
+              { 
+                question: 'Can I return the card?', 
+                answer: 'Unfortunately, digital cards cannot be returned after the code is delivered. Please make sure of the card before purchasing.' 
+              },
+              { 
+                question: 'Do you support cash on delivery?', 
+                answer: 'Due to the digital nature of the product, we only accept electronic payment (bank cards, Apple Pay, bank transfer).' 
+              },
+              { 
+                question: 'What if the code does not work?', 
+                answer: 'This rarely happens, but if you encounter any problem, please contact us immediately and we will solve the problem or replace the card.' 
+              },
+            ],
+          },
+        },
+        {
+          id: 'payments-digital-cards',
+          type: 'payments',
+          props: {
+            title: 'Available Payment Methods',
+            subtitle: 'We accept all electronic payment methods',
+            methods: ['Visa', 'Mastercard', 'Apple Pay', 'Mada', 'STC Pay', 'Bank Transfer'],
+          },
+        },
+        {
+          id: 'cta-digital-cards',
+          type: 'cta',
+          props: {
+            title: 'Ready to Buy Your First Card? 🎮',
+            description: 'Sign up now and get 10% off your first purchase',
+            buttonText: 'Start Shopping Now',
+            buttonLink: '/products',
+            backgroundColor: '#6366f1',
+            textColor: '#ffffff',
+          },
+        },
+        {
+          id: 'footer-digital-cards',
+          type: 'footer',
+          props: {
+            companyName: 'Digital Cards Store',
+            description: 'Trusted platform for buying digital cards with instant delivery and competitive prices',
+            links: [
+              { label: 'About Us', url: '/about' },
+              { label: 'Contact Us', url: '/contact' },
+              { label: 'Terms & Conditions', url: '/terms' },
+              { label: 'Privacy Policy', url: '/privacy' },
+            ],
+            socialLinks: {
+              twitter: '#',
+              instagram: '#',
+              whatsapp: '#',
+              telegram: '#',
+            },
+          },
+        },
+      ],
+    },
+  },
+
 ];
+
