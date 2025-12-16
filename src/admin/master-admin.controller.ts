@@ -10,6 +10,7 @@ import {
   Req,
   UseGuards,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { MasterAdminService } from './master-admin.service';
 import { PlanType, Status } from '@prisma/client';
@@ -21,6 +22,8 @@ import { UpdateApiKeyDto } from '../api-key/dto/update-api-key.dto';
 @UseGuards(AdminApiKeyGuard)
 @Controller('admin/master')
 export class MasterAdminController {
+  private readonly logger = new Logger(MasterAdminController.name);
+
   constructor(
     private readonly masterAdminService: MasterAdminService,
     private readonly apiKeyService: ApiKeyService,
@@ -412,22 +415,101 @@ export class MasterAdminController {
 
   @Get('api-keys')
   async getAllApiKeys(@Query('tenantId') tenantId?: string) {
-    if (tenantId) {
-      const apiKeys = await this.apiKeyService.findAll(tenantId);
-      return { apiKeys };
+    try {
+      if (tenantId) {
+        const apiKeys = await this.apiKeyService.findAll(tenantId);
+        return { apiKeys };
+      }
+      
+      // Get all API keys from all tenants
+      const allApiKeys = await this.apiKeyService.findAllForAllTenants();
+      return { apiKeys: allApiKeys || [] };
+    } catch (error: any) {
+      // Log the full error for debugging
+      console.error('Error in getAllApiKeys:', error);
+      console.error('Error details:', {
+        name: error?.name,
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack,
+      });
+      throw new BadRequestException(
+        `Failed to fetch API keys: ${error?.message || 'Unknown error'}. ` +
+        `Please check server logs for details. Code: ${error?.code || 'N/A'}`
+      );
     }
-    
-    // Get all API keys from all tenants
-    const allApiKeys = await this.apiKeyService.findAllForAllTenants();
-    return { apiKeys: allApiKeys };
   }
 
   @Post('api-keys')
-  async createApiKey(@Body() dto: CreateApiKeyDto & { tenantId: string }) {
-    if (!dto.tenantId) {
-      throw new BadRequestException('Tenant ID is required');
+  async createApiKey(@Body() dto: CreateApiKeyDto) {
+    try {
+      // Log the incoming request for debugging
+      this.logger.log(`Creating API key with name: ${dto?.name}`);
+      
+      // Create API key without requiring tenantId - uses system tenant automatically
+      // This allows creating API keys for tracking API usage globally
+      if (!dto || !dto.name || !dto.name.trim()) {
+        throw new BadRequestException('API key name is required');
+      }
+      
+      const result = await this.apiKeyService.create(null, { name: dto.name.trim() });
+      this.logger.log(`API key created successfully: ${result.id}`);
+      return result;
+    } catch (error: any) {
+      // Log the full error for debugging
+      this.logger.error('Error in createApiKey:', error);
+      this.logger.error('Error details:', {
+        name: error?.name,
+        message: error?.message,
+        code: error?.code,
+        meta: error?.meta,
+        stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
+      });
+      this.logger.error('DTO received:', JSON.stringify(dto));
+      
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      // Handle Prisma errors
+      if (error?.code) {
+        if (error.code === 'P2002') {
+          const target = error?.meta?.target || 'field';
+          throw new BadRequestException(`API key with this ${target} already exists`);
+        }
+        if (error.code === 'P2003') {
+          throw new BadRequestException('Invalid tenant reference. Please check system configuration.');
+        }
+      }
+      
+      throw new BadRequestException(`Failed to create API key: ${error?.message || 'Unknown error'}`);
     }
-    return this.apiKeyService.create(dto.tenantId, { name: dto.name });
+  }
+
+  @Post('api-keys/create-saeaa')
+  async createSaeaaApiKey() {
+    try {
+      // Check if saeaa API key already exists
+      const existingKeys = await this.apiKeyService.findAllForAllTenants();
+      const existingSaeaa = existingKeys.find(k => k.name.toLowerCase() === 'saeaa');
+      
+      if (existingSaeaa) {
+        throw new BadRequestException('API key "saeaa" already exists');
+      }
+      
+      // Create the saeaa API key (uses system tenant automatically)
+      const result = await this.apiKeyService.create(null, { name: 'saeaa' });
+      return {
+        success: true,
+        message: 'API key "saeaa" created successfully',
+        apiKey: result.apiKey,
+        id: result.id,
+        name: result.name,
+        warning: 'Please save the API key now - it will not be shown again!'
+      };
+    } catch (error: any) {
+      throw new BadRequestException(`Failed to create saeaa API key: ${error.message}`);
+    }
   }
 
   @Get('api-keys/:id')

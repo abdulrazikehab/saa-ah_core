@@ -16,12 +16,41 @@ export class CartService {
   async getOrCreateCart(tenantId: string, sessionId?: string, userId?: string) {
     this.logger.log(`getOrCreateCart called - tenantId: ${tenantId}, sessionId: ${sessionId || 'none'}, userId: ${userId || 'none'}`);
     
-    // Try Redis cache first if available
+    // Try Redis cache first if available, but verify it exists in database
     if (this.redisService && sessionId) {
       const cachedCart = await this.redisService.getCartSession(sessionId);
-      if (cachedCart) {
-        this.logger.log(`Retrieved cart from Redis cache: ${sessionId}, items: ${cachedCart.cartItems?.length || 0}`);
-        return cachedCart;
+      if (cachedCart && cachedCart.id) {
+        // Verify cart exists in database and get fresh data
+        try {
+          const dbCart = await this.prisma.cart.findFirst({
+            where: { id: cachedCart.id, tenantId },
+            include: {
+              cartItems: {
+                include: {
+                  product: {
+                    include: {
+                      images: { orderBy: { sortOrder: 'asc' }, take: 10 }
+                    }
+                  },
+                  productVariant: true
+                },
+                orderBy: { createdAt: 'asc' }
+              }
+            }
+          });
+          if (dbCart) {
+            this.logger.log(`Retrieved cart from Redis cache and verified in DB: ${sessionId}, items: ${dbCart.cartItems?.length || 0}`);
+            // Update Redis with fresh data
+            await this.redisService.setCartSession(sessionId, dbCart);
+            return dbCart;
+          } else {
+            this.logger.warn(`Cart ${cachedCart.id} from Redis not found in database, will fetch/create from database`);
+            // Clear stale Redis cache
+            await this.redisService.deleteCartSession(sessionId);
+          }
+        } catch (error) {
+          this.logger.warn(`Error verifying cached cart in database: ${error}, will fetch from database`);
+        }
       }
     }
 
@@ -167,6 +196,28 @@ export class CartService {
       cart.cartItems = [];
     }
     
+    // Ensure all cart items have complete product data
+    if (cart.cartItems.length > 0) {
+      for (const item of cart.cartItems) {
+        if (!item.product) {
+          // Reload product if missing
+          try {
+            const product = await this.prisma.product.findFirst({
+              where: { id: item.productId, tenantId },
+              include: {
+                images: { orderBy: { sortOrder: 'asc' }, take: 10 }
+              }
+            });
+            if (product) {
+              item.product = product;
+            }
+          } catch (error) {
+            this.logger.error(`Error reloading product ${item.productId} for cart item ${item.id}:`, error);
+          }
+        }
+      }
+    }
+    
     this.logger.log(`Returning cart - cartId: ${cart.id}, items: ${cart.cartItems.length}, sessionId: ${cart.sessionId || sessionId}, userId: ${cart.userId || userId}`);
     
     // Cache in Redis if available
@@ -238,6 +289,7 @@ export class CartService {
     }
 
     // Check if item already in cart (use finalVariantId which may have been auto-selected)
+    // IMPORTANT: Match by cartId + productId + productVariantId to allow multiple different products
     const existingItem = await this.prisma.cartItem.findFirst({
       where: {
         cartId,
@@ -246,8 +298,11 @@ export class CartService {
       },
     });
 
+    this.logger.log(`Checking for existing cart item - cartId: ${cartId}, productId: ${productId}, variantId: ${finalVariantId || 'none'}, found: ${existingItem ? 'yes' : 'no'}`);
+
     let cartItem;
     if (existingItem) {
+      this.logger.log(`Existing item found - itemId: ${existingItem.id}, current quantity: ${existingItem.quantity}, adding: ${quantity}`);
       const newQuantity = existingItem.quantity + quantity;
       
       // Check inventory again for updated quantity (only if tracking is enabled)
@@ -273,8 +328,10 @@ export class CartService {
           productVariant: true 
         },
       });
+      this.logger.log(`✅ Updated existing cart item ${cartItem.id} - new quantity: ${newQuantity}`);
     } else {
-      // Create new cart item
+      // Create new cart item - this allows multiple different products in the same cart
+      this.logger.log(`Creating new cart item for product ${productId} in cart ${cartId}`);
       cartItem = await this.prisma.cartItem.create({
         data: {
           cartId,
@@ -291,6 +348,7 @@ export class CartService {
           productVariant: true 
         },
       });
+      this.logger.log(`✅ Created new cart item ${cartItem.id} for product ${productId}`);
     }
 
     // CRITICAL: Verify the cart item has the correct product
@@ -306,7 +364,7 @@ export class CartService {
     
     this.logger.log(`✅ Added product ${productId} (${cartItem.product.name || cartItem.product.nameAr || 'Unknown'}) to cart ${cartId}, cartItem: ${cartItem.id}, quantity: ${quantity}`);
 
-    // Get the updated cart with all items - ensure fresh data
+    // Get the updated cart with all items - ensure fresh data from database
     const cart = await this.getCartById(tenantId, cartId);
     this.logger.log(`📦 Cart retrieved after add - cartId: ${cart.id}, total items: ${cart.cartItems?.length || 0}, sessionId: ${cart.sessionId}`);
     
@@ -342,19 +400,27 @@ export class CartService {
         this.logger.warn(`⚠️ Added cartItem ${cartItem.id} not found in cart! Cart has ${cart.cartItems.length} items. Re-fetching cart...`);
         // Re-fetch cart to ensure we have the latest data
         const refreshedCart = await this.getCartById(tenantId, cartId);
+        // Update Redis cache with fresh data
+        if (this.redisService && refreshedCart.sessionId) {
+          await this.redisService.setCartSession(refreshedCart.sessionId, refreshedCart);
+        }
         return refreshedCart;
       }
     } else {
       this.logger.warn(`⚠️ Cart has 0 items after adding product ${productId}! Re-fetching cart...`);
       // Re-fetch cart to ensure we have the latest data
       const refreshedCart = await this.getCartById(tenantId, cartId);
+      // Update Redis cache with fresh data
+      if (this.redisService && refreshedCart.sessionId) {
+        await this.redisService.setCartSession(refreshedCart.sessionId, refreshedCart);
+      }
       return refreshedCart;
     }
-
-    // Clear Redis cache to force fresh fetch
+    
+    // Update Redis cache with fresh cart data after adding item
     if (this.redisService && cart.sessionId) {
-      await this.redisService.deleteCartSession(cart.sessionId);
-      this.logger.log(`Cleared Redis cache for sessionId: ${cart.sessionId}`);
+      await this.redisService.setCartSession(cart.sessionId, cart);
+      this.logger.log(`✅ Updated Redis cache with cart ${cart.id}, items: ${cart.cartItems.length}`);
     }
 
     return cart;
@@ -402,10 +468,11 @@ export class CartService {
 
     this.logger.log(`Updated cart item ${itemId} quantity to ${quantity}`);
 
-    // Clear Redis cache and return updated cart
+    // Get updated cart and update Redis cache
     const updatedCart = await this.getCartById(tenantId, cartId);
     if (this.redisService && updatedCart.sessionId) {
-      await this.redisService.deleteCartSession(updatedCart.sessionId);
+      await this.redisService.setCartSession(updatedCart.sessionId, updatedCart);
+      this.logger.log(`✅ Updated Redis cache with cart ${updatedCart.id}, items: ${updatedCart.cartItems.length}`);
     }
 
     return updatedCart;
@@ -503,13 +570,13 @@ export class CartService {
 
     this.logger.log(`Removed cart item ${itemId} from cart ${cartId}`);
 
-    // Clear Redis cache (reuse cart from earlier in function)
-    if (this.redisService && cart.sessionId) {
-      await this.redisService.deleteCartSession(cart.sessionId);
+    // Get updated cart and update Redis cache
+    const updatedCart = await this.getCartById(tenantId, cartId);
+    if (this.redisService && updatedCart.sessionId) {
+      await this.redisService.setCartSession(updatedCart.sessionId, updatedCart);
+      this.logger.log(`✅ Updated Redis cache with cart ${updatedCart.id}, items: ${updatedCart.cartItems.length}`);
     }
 
-    // Return updated cart
-    const updatedCart = await this.getCartById(tenantId, cartId);
     return updatedCart;
   }
 
@@ -530,19 +597,38 @@ export class CartService {
 
     this.logger.log(`Cleared all items from cart ${cartId}`);
 
-    // Clear Redis cache
-    if (this.redisService && cart.sessionId) {
-      await this.redisService.deleteCartSession(cart.sessionId);
+    // Get updated cart and update Redis cache
+    const updatedCart = await this.getCartById(tenantId, cartId);
+    if (this.redisService && updatedCart.sessionId) {
+      await this.redisService.setCartSession(updatedCart.sessionId, updatedCart);
+      this.logger.log(`✅ Updated Redis cache with cart ${updatedCart.id}, items: ${updatedCart.cartItems.length}`);
     }
 
-    return this.getCartById(tenantId, cartId);
+    return updatedCart;
   }
 
   async getCartById(tenantId: string, cartId: string) {
-    this.logger.log(`getCartById called - tenantId: ${tenantId}, cartId: ${cartId}`);
+    // Clean cartId - remove any URL encoding artifacts
+    let cleanCartId = cartId.trim();
+    // If cartId contains slashes or plus signs, it might be incorrectly formatted
+    if (cleanCartId.includes('/') || cleanCartId.includes('+')) {
+      // Try to extract the actual ID (CUIDs are typically 25 characters, no slashes)
+      const parts = cleanCartId.split(/[/+]/);
+      const validParts = parts.filter(part => {
+        const trimmed = part.trim();
+        return trimmed.length >= 20 && !trimmed.includes('/') && !trimmed.includes('+');
+      });
+      if (validParts.length > 0) {
+        // Use the longest valid part
+        cleanCartId = validParts.reduce((a, b) => a.length > b.length ? a : b).trim();
+        this.logger.warn(`Cleaned cartId from "${cartId}" to "${cleanCartId}"`);
+      }
+    }
+    
+    this.logger.log(`getCartById called - tenantId: ${tenantId}, cartId: ${cleanCartId}`);
     
     const cart = await this.prisma.cart.findFirst({
-      where: { id: cartId, tenantId },
+      where: { id: cleanCartId, tenantId },
       include: {
         cartItems: {
           include: {
@@ -632,7 +718,7 @@ export class CartService {
 
     this.logger.log(`getCartById returning - cartId: ${cart.id}, items: ${cart.cartItems.length}, sessionId: ${cart.sessionId}`);
     if (cart.cartItems.length > 0) {
-      this.logger.log(`Cart items details:`, cart.cartItems.map((item: any) => ({
+      this.logger.log(`Cart items details (${cart.cartItems.length} items):`, cart.cartItems.map((item: any) => ({
         id: item.id,
         productId: item.productId,
         quantity: item.quantity,
@@ -640,8 +726,16 @@ export class CartService {
         productNameAr: item.product?.nameAr,
         hasProduct: !!item.product,
         hasVariant: !!item.productVariant,
+        variantId: item.productVariantId,
         imageCount: item.product?.images?.length || 0,
       })));
+    } else {
+      this.logger.warn(`⚠️ Cart ${cart.id} has 0 items!`);
+    }
+    
+    // Update Redis cache with fresh data
+    if (this.redisService && cart.sessionId) {
+      await this.redisService.setCartSession(cart.sessionId, cart);
     }
     
     return cart;

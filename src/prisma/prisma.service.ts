@@ -102,6 +102,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   get currency() { return this.prisma.currency; }
   get currencySettings() { return this.prisma.currencySettings; }
   get productSupplier() { return this.prisma.productSupplier; }
+  get apiKey() { return this.prisma.apiKey; }
 
   // Digital Cards Marketplace Models
   get cardProduct() { return this.prisma.cardProduct; }

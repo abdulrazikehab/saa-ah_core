@@ -41,27 +41,47 @@ export class ActionLoggingInterceptor implements NestInterceptor {
           
           // Only log if we have a valid tenant ID (foreign key constraint requires existing tenant)
           if (isSuccess && this.prisma.activityLog && tenantId && tenantId !== 'system') {
-            // Log all successful actions (all methods including GET)
-            await this.prisma.activityLog.create({
-              data: {
-                tenantId,
-                actorId: user?.id || user?.sub || 'anonymous',
-                action: `${method} ${url.split('?')[0]}`,
-                targetId: params?.id || query?.id || body?.id || null,
-                details: {
-                  method,
-                  url,
-                  body: this.sanitizeBody(body),
-                  query,
-                  params,
-                  ipAddress,
-                  userAgent,
-                  resourceType: this.getResourceType(url),
-                  userEmail: user?.email,
-                  userName: user?.name,
+            try {
+              // Verify tenant exists before creating activity log (prevent foreign key constraint violation)
+              const tenantExists = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { id: true },
+              });
+
+              if (!tenantExists) {
+                // Tenant doesn't exist, skip logging to avoid foreign key constraint error
+                return;
+              }
+
+              // Log all successful actions (all methods including GET)
+              await this.prisma.activityLog.create({
+                data: {
+                  tenantId,
+                  actorId: user?.id || user?.sub || 'anonymous',
+                  action: `${method} ${url.split('?')[0]}`,
+                  targetId: params?.id || query?.id || body?.id || null,
+                  details: {
+                    method,
+                    url,
+                    body: this.sanitizeBody(body),
+                    query,
+                    params,
+                    ipAddress,
+                    userAgent,
+                    resourceType: this.getResourceType(url),
+                    userEmail: user?.email,
+                    userName: user?.name,
+                  },
                 },
-              },
-            });
+              });
+            } catch (logError: any) {
+              // If logging fails (e.g., foreign key constraint), silently skip
+              // Don't break the request flow
+              if (logError?.code !== 'P2003') { // P2003 is foreign key constraint error
+                // Only log non-foreign-key errors for debugging
+                console.warn('Activity log creation failed:', logError?.message);
+              }
+            }
           }
         } catch (error) {
           // Silent fail - don't break request if logging fails
