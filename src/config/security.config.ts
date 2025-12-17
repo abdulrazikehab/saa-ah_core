@@ -21,5 +21,8 @@ export const securityConfig = {
         connectSrc: ["'self'", 'https://api.hyperpay.com'], // Allow Payment Gateway
       },
     },
+    crossOriginEmbedderPolicy: false, // Disable to prevent CORS conflicts
+    crossOriginOpenerPolicy: false, // Disable to prevent CORS conflicts
+    crossOriginResourcePolicy: false, // Disable to prevent CORS conflicts
   },
 };

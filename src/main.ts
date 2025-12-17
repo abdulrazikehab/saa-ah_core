@@ -36,9 +36,124 @@ async function bootstrap() {
       process.exit(1);
     }
 
-    // CORS configuration - Allow all origins
+    // Enhanced CORS configuration for frontend and subdomains
+    // app.enableCors({
+    //   origin: (origin, callback) => {
+    //     // Allow requests with no origin (like mobile apps or curl requests)
+    //     if (!origin) {
+    //       logger.debug('✅ CORS: Allowing request with no origin');
+    //       return callback(null, true);
+    //     }
+        
+    //     logger.debug(`🔍 CORS: Checking origin: ${origin}`);
+        
+    //     // List of allowed origins
+    //     const allowedOrigins = [
+    //       'http://localhost:4173',
+    //       'http://localhost:3000',
+    //       'http://localhost:8080',
+    //       'http://127.0.0.1:4173',
+    //       'http://127.0.0.1:3000',
+    //       'http://127.0.0.1:8080',
+    //       'http://192.168.0.108:4173',
+    //       'http://192.168.0.108:8080',
+    //       'https://saeaa.com',
+    //       'https://saeaa.net',
+    //       'http://saeaa.com',
+    //       'http://saeaa.net',
+    //       'https://www.saeaa.com',
+    //       'https://www.saeaa.net',
+    //       'https://app.saeaa.com',
+    //       'https://app.saeaa.net',
+    //       process.env.FRONTEND_URL,
+    //     ].filter(Boolean);
+        
+    //     // Check if origin is in allowed list
+    //     if (allowedOrigins.includes(origin)) {
+    //       logger.log(`✅ CORS: Allowed origin (whitelist): ${origin}`);
+    //       return callback(null, origin); // Return origin string to prevent duplicates
+    //     }
+        
+    //     // Allow any subdomain of localhost (e.g., mystore.localhost:8080)
+    //     if (origin.match(/^http:\/\/[\w-]+\.localhost(:\d+)?$/)) {
+    //       logger.log(`✅ CORS: Allowed origin (localhost subdomain): ${origin}`);
+    //       return callback(null, origin);
+    //     }
+        
+    //     // Allow main production domains (including www and app subdomains)
+    //     if (origin.match(/^https?:\/\/(www\.|app\.)?(saeaa\.com|saeaa\.net)(:\d+)?$/)) {
+    //       logger.log(`✅ CORS: Allowed origin (production domain): ${origin}`);
+    //       return callback(null, origin);
+    //     }
+        
+    //     // Allow any subdomain of saeaa.com (e.g., store.saeaa.com)
+    //     if (origin.match(/^https?:\/\/[\w-]+\.saeaa\.com$/)) {
+    //       logger.log(`✅ CORS: Allowed origin (saeaa.com subdomain): ${origin}`);
+    //       return callback(null, origin);
+    //     }
+        
+    //     // Allow any subdomain of saeaa.net (e.g., store.saeaa.net)
+    //     if (origin.match(/^https?:\/\/[\w-]+\.saeaa\.net$/)) {
+    //       logger.log(`✅ CORS: Allowed origin (saeaa.net subdomain): ${origin}`);
+    //       return callback(null, origin);
+    //     }
+        
+    //     // Legacy: Allow any subdomain of saa'ah.com (if still in use)
+    //     if (origin.match(/^https?:\/\/[\w-]+\.saa'ah\.com$/)) {
+    //       logger.log(`✅ CORS: Allowed origin (legacy domain): ${origin}`);
+    //       return callback(null, origin);
+    //     }
+
+    //     // Allow local network IPs (e.g. 192.168.1.12:4173)
+    //     if (origin.match(/^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/)) {
+    //       logger.log(`✅ CORS: Allowed origin (local network): ${origin}`);
+    //       return callback(null, origin);
+    //     }
+        
+    //     // Reject other origins
+    //     logger.warn(`❌ CORS: Blocked origin: ${origin}`);
+    //     callback(new Error('Not allowed by CORS'));
+    //   },
+    //   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+    //   allowedHeaders: [
+    //     'Content-Type',
+    //     'Authorization',
+    //     'X-Requested-With',
+    //     'Accept',
+    //     'Origin',
+    //     'X-Tenant-Id',
+    //     'X-Tenant-Domain',
+    //     'x-tenant-id',
+    //     'x-tenant-domain',
+    //     'X-Session-ID',
+    //     'x-session-id',
+    //     'X-Admin-API-Key',
+    //     'x-admin-api-key',
+    //     'X-API-Key',
+    //     'X-ApiKey',
+    //     'x-api-key',
+    //     'x-apikey'
+    //   ],
+    //   exposedHeaders: [
+    //     'Content-Type',
+    //     'Authorization'
+    //   ],
+    //   credentials: true,
+    //   preflightContinue: false,
+    //   optionsSuccessStatus: 204,
+    // });
+    // Enhanced CORS configuration - allow all origins but prevent duplicate headers
     app.enableCors({
-      origin: true, // Allow all origins
+      origin: (origin, callback) => {
+        // Allow all origins - always return the origin string when present to prevent duplicates
+        // When origin is undefined (no-origin requests), return true
+        if (origin) {
+          callback(null, origin); // Return origin string explicitly
+        } else {
+          callback(null, true); // Allow requests with no origin
+        }
+      },
+      credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
       allowedHeaders: [
         'Content-Type',
@@ -61,14 +176,12 @@ async function bootstrap() {
       ],
       exposedHeaders: [
         'Content-Type',
-        'Authorization',
-        'Access-Control-Allow-Origin',
-        'Access-Control-Allow-Credentials'
+        'Authorization'
       ],
-      credentials: true,
       preflightContinue: false,
       optionsSuccessStatus: 204,
     });
+    
 
     // Security Hardening
     app.use(helmet(securityConfig.helmet));
