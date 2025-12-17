@@ -12,6 +12,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Headers,
+  HttpCode,
   Logger
 } from '@nestjs/common';
 import { ProductService } from './product.service';
@@ -135,33 +136,38 @@ export class ProductController {
 
   @Delete(':id')
   @UseGuards(TenantRequiredGuard)
-  remove(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
+  @HttpCode(204)
+  async remove(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
     const tenantId = this.ensureTenantId(req.tenantId);
+    
+    this.logger.log(`🗑️ Delete request for product: ${id}, tenant: ${tenantId}`);
     
     // Decode the id in case it was URL encoded
     let decodedId = id;
     try {
+      // NestJS automatically decodes URL parameters, but we'll decode again to be safe
       decodedId = decodeURIComponent(id);
     } catch (e) {
-      // If decoding fails, use original
+      // If decoding fails, use original (might already be decoded)
+      decodedId = id;
     }
     
-    // Clean the ID - remove any URL encoding artifacts or extra characters
-    let cleanId = decodedId.trim();
+    // Trim whitespace
+    const cleanId = decodedId.trim();
     
-    // If ID contains slashes or plus signs, try to extract the actual ID
-    if (cleanId.includes('/') || cleanId.includes('+')) {
-      const parts = cleanId.split(/[/+]/);
-      const validParts = parts.filter(part => {
-        const trimmed = part.trim();
-        return trimmed.length >= 20 && !trimmed.includes('/') && !trimmed.includes('+');
-      });
-      if (validParts.length > 0) {
-        cleanId = validParts.reduce((a, b) => a.length > b.length ? a : b).trim();
-      }
-    }
+    this.logger.log(`🗑️ Cleaned product ID: ${cleanId}`);
     
-    return this.productService.remove(tenantId, cleanId);
+    await this.productService.remove(tenantId, cleanId);
+    
+    this.logger.log(`✅ Delete completed for product: ${cleanId}`);
+    return;
+  }
+
+  @Post('bulk-delete')
+  @UseGuards(TenantRequiredGuard)
+  bulkDelete(@Request() req: AuthenticatedRequest, @Body() body: { ids: string[] }) {
+    const tenantId = this.ensureTenantId(req.tenantId);
+    return this.productService.bulkRemove(tenantId, body.ids);
   }
 
   @Patch('variants/:variantId/inventory')

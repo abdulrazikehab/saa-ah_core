@@ -347,4 +347,68 @@ export class CategoryController {
 
     return { message: 'Category deleted successfully' };
   }
+
+  @Post('bulk-delete')
+  @UseGuards(TenantRequiredGuard)
+  async bulkDeleteCategories(
+    @Request() req: AuthenticatedRequest,
+    @Body() body: { ids: string[] },
+  ) {
+    const tenantId = this.ensureTenantId(req.tenantId);
+    
+    if (!body.ids || body.ids.length === 0) {
+      throw new BadRequestException('No category IDs provided');
+    }
+
+    let deleted = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (const id of body.ids) {
+      try {
+        // Verify category exists and belongs to tenant
+        const existingCategory = await this.prisma.category.findFirst({
+          where: {
+            id: id,
+            tenantId: tenantId,
+          },
+        });
+
+        if (!existingCategory) {
+          failed++;
+          errors.push(`Category ${id} not found`);
+          continue;
+        }
+
+        // Check if category has products
+        const productsWithCategory = await this.prisma.productCategory.count({
+          where: {
+            categoryId: id,
+          },
+        });
+
+        if (productsWithCategory > 0) {
+          failed++;
+          errors.push(`Category ${existingCategory.name} has products and cannot be deleted`);
+          continue;
+        }
+
+        await this.prisma.category.delete({
+          where: { id: id },
+        });
+
+        deleted++;
+      } catch (error: any) {
+        failed++;
+        errors.push(`Failed to delete category ${id}: ${error.message}`);
+      }
+    }
+
+    return {
+      message: `Bulk delete completed: ${deleted} deleted, ${failed} failed`,
+      deleted,
+      failed,
+      errors: errors.length > 0 ? errors : undefined,
+    };
+  }
 }

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantSyncService } from '../tenant/tenant-sync.service'; // Add this import
 import { CreateProductDto } from './dto/create-product.dto';
@@ -655,46 +655,183 @@ export class ProductService {
       throw new ForbiddenException('Tenant ID is required');
     }
 
+    this.logger.log(`🗑️ Attempting to delete product: ${id} for tenant: ${tenantId}`);
+
     // Ensure tenant exists
     await this.tenantSyncService.ensureTenantExists(tenantId);
 
+    // Find the product first to verify it exists and belongs to the tenant
     const product = await this.prisma.product.findFirst({
       where: { id, tenantId },
     });
 
     if (!product) {
-      throw new NotFoundException('Product not found');
+      this.logger.warn(`⚠️ Product not found: ${id} for tenant: ${tenantId}`);
+      throw new NotFoundException(`Product with ID ${id} not found`);
     }
 
-    // Delete all related records in a transaction to avoid foreign key constraint violations
-    await this.prisma.$transaction(async (tx: any) => {
-      // Delete product variants first
-      await tx.productVariant.deleteMany({
-        where: { productId: id },
+    this.logger.log(`✅ Product found: ${product.id} - ${product.name || product.nameAr || 'Unnamed'}`);
+
+    try {
+      // Delete all related records in a transaction to avoid foreign key constraint violations
+      await this.prisma.$transaction(async (tx: any) => {
+        // Delete cart items first (no cascade delete)
+        const cartItemsDeleted = await tx.cartItem.deleteMany({
+          where: { productId: id },
+        });
+        this.logger.log(`  Deleted ${cartItemsDeleted.count} cart items`);
+
+        // Delete order items (no cascade delete)
+        const orderItemsDeleted = await tx.orderItem.deleteMany({
+          where: { productId: id },
+        });
+        this.logger.log(`  Deleted ${orderItemsDeleted.count} order items`);
+
+        // Delete product collection items (no cascade delete)
+        const collectionItemsDeleted = await tx.productCollectionItem.deleteMany({
+          where: { productId: id },
+        });
+        this.logger.log(`  Deleted ${collectionItemsDeleted.count} collection items`);
+
+        // Delete product tag items (no cascade delete)
+        const tagItemsDeleted = await tx.productTagItem.deleteMany({
+          where: { productId: id },
+        });
+        this.logger.log(`  Deleted ${tagItemsDeleted.count} tag items`);
+
+        // Delete product variants
+        const variantsDeleted = await tx.productVariant.deleteMany({
+          where: { productId: id },
+        });
+        this.logger.log(`  Deleted ${variantsDeleted.count} variants`);
+
+        // Delete product images
+        const imagesDeleted = await tx.productImage.deleteMany({
+          where: { productId: id },
+        });
+        this.logger.log(`  Deleted ${imagesDeleted.count} images`);
+
+        // Delete product-category associations
+        const categoriesDeleted = await tx.productCategory.deleteMany({
+          where: { productId: id },
+        });
+        this.logger.log(`  Deleted ${categoriesDeleted.count} category associations`);
+
+        // Delete product-supplier associations
+        const suppliersDeleted = await tx.productSupplier.deleteMany({
+          where: { productId: id },
+        });
+        this.logger.log(`  Deleted ${suppliersDeleted.count} supplier associations`);
+
+        // Finally, delete the product
+        // Note: We already verified the product belongs to this tenant above
+        const deletedProduct = await tx.product.delete({
+          where: { id },
+        });
+        this.logger.log(`  Deleted product: ${deletedProduct.id}`);
       });
 
-      // Delete product images
-      await tx.productImage.deleteMany({
-        where: { productId: id },
+      // Verify the product was actually deleted
+      const verifyDeleted = await this.prisma.product.findFirst({
+        where: { id, tenantId },
       });
 
-      // Delete product-category associations
-      await tx.productCategory.deleteMany({
-        where: { productId: id },
-      });
+      if (verifyDeleted) {
+        this.logger.error(`❌ Product still exists after deletion attempt: ${id}`);
+        throw new Error(`Failed to delete product ${id} - product still exists in database`);
+      }
 
-      // Delete product-supplier associations
-      await tx.productSupplier.deleteMany({
-        where: { productId: id },
+      this.logger.log(`✅ Product deleted successfully and verified: ${id}`);
+    } catch (error: any) {
+      this.logger.error(`❌ Failed to delete product ${id}:`, error);
+      this.logger.error(`Error details:`, {
+        message: error?.message,
+        code: error?.code,
+        meta: error?.meta,
+        stack: error?.stack,
       });
+      throw error;
+    }
+  }
 
-      // Finally, delete the product
-      await tx.product.delete({
-        where: { id },
-      });
-    });
+  async bulkRemove(tenantId: string, ids: string[]): Promise<{ deleted: number; failed: number; errors: string[] }> {
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant ID is required');
+    }
 
-    this.logger.log(`✅ Product deleted successfully: ${id}`);
+    if (!ids || ids.length === 0) {
+      throw new BadRequestException('No product IDs provided');
+    }
+
+    // Ensure tenant exists
+    await this.tenantSyncService.ensureTenantExists(tenantId);
+
+    let deleted = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    // Process deletions in batches to avoid overwhelming the database
+    const batchSize = 10;
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const batch = ids.slice(i, i + batchSize);
+      
+      await Promise.all(
+        batch.map(async (id) => {
+          try {
+            // Clean the ID
+            let cleanId = id.trim();
+            if (cleanId.includes('/') || cleanId.includes('+')) {
+              const parts = cleanId.split(/[/+]/);
+              const validParts = parts.filter(part => {
+                const trimmed = part.trim();
+                return trimmed.length >= 20 && !trimmed.includes('/') && !trimmed.includes('+');
+              });
+              if (validParts.length > 0) {
+                cleanId = validParts.reduce((a, b) => a.length > b.length ? a : b).trim();
+              }
+            }
+
+            // Verify product exists and belongs to tenant
+            const product = await this.prisma.product.findFirst({
+              where: { id: cleanId, tenantId },
+            });
+
+            if (!product) {
+              failed++;
+              errors.push(`Product ${cleanId} not found`);
+              return;
+            }
+
+            // Delete all related records in correct order
+            await this.prisma.$transaction(async (tx: any) => {
+              // Delete items that reference the product (no cascade delete)
+              await tx.cartItem.deleteMany({ where: { productId: cleanId } });
+              await tx.orderItem.deleteMany({ where: { productId: cleanId } });
+              await tx.productCollectionItem.deleteMany({ where: { productId: cleanId } });
+              await tx.productTagItem.deleteMany({ where: { productId: cleanId } });
+              
+              // Delete product-specific relations
+              await tx.productVariant.deleteMany({ where: { productId: cleanId } });
+              await tx.productImage.deleteMany({ where: { productId: cleanId } });
+              await tx.productCategory.deleteMany({ where: { productId: cleanId } });
+              await tx.productSupplier.deleteMany({ where: { productId: cleanId } });
+              
+              // Finally delete the product
+              await tx.product.delete({ where: { id: cleanId } });
+            });
+
+            deleted++;
+          } catch (error: any) {
+            failed++;
+            errors.push(`Failed to delete product ${id}: ${error.message}`);
+            this.logger.error(`Failed to delete product ${id}:`, error);
+          }
+        })
+      );
+    }
+
+    this.logger.log(`✅ Bulk delete completed: ${deleted} deleted, ${failed} failed`);
+    return { deleted, failed, errors };
   }
 
   async updateInventory(tenantId: string, variantId: string, quantity: number): Promise<void> {
