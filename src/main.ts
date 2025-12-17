@@ -6,8 +6,9 @@ import * as path from 'path';
 import helmet from 'helmet';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { securityConfig } from './config/security.config';
-import { json, urlencoded } from 'express';
+import { json, urlencoded, Request, Response, NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
+import cors from 'cors';
 
 // Load environment variables first
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -125,44 +126,64 @@ async function bootstrap() {
     //   preflightContinue: false,
     //   optionsSuccessStatus: 204,
     // });
-    // Enhanced CORS configuration - allow all origins but prevent duplicate headers
-    app.enableCors({
-      origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean | string) => void) => {
-        // Allow all origins - always return the origin string when present to prevent duplicates
-        // When origin is undefined (no-origin requests), return true
-        if (origin) {
-          callback(null, origin); // Return origin string explicitly
-        } else {
-          callback(null, true); // Allow requests with no origin
+    // Use Express CORS directly to set headers properly
+    // app.use(cors({
+    //   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean | string) => void) => {
+    //     // Always allow the origin if present, or allow all if no origin
+    //     callback(null, origin || true);
+    //   },
+    //   credentials: true,
+    //   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+    //   allowedHeaders: [
+    //     'Content-Type',
+    //     'Authorization',
+    //     'X-Requested-With',
+    //     'Accept',
+    //     'Origin',
+    //     'X-Tenant-Id',
+    //     'X-Tenant-Domain',
+    //     'x-tenant-id',
+    //     'x-tenant-domain',
+    //     'X-Session-ID',
+    //     'x-session-id',
+    //     'X-Admin-API-Key',
+    //     'x-admin-api-key',
+    //     'X-API-Key',
+    //     'X-ApiKey',
+    //     'x-api-key',
+    //     'x-apikey'
+    //   ],
+    //   exposedHeaders: [
+    //     'Content-Type',
+    //     'Authorization'
+    //   ],
+    //   preflightContinue: false,
+    //   optionsSuccessStatus: 204,
+    // }));
+
+    // CRITICAL: Remove duplicate CORS headers before response is sent
+    // This prevents duplicates from proxy/nginx/vercel
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      const originalEnd = res.end.bind(res);
+      res.end = function(chunk?: any, encoding?: any, cb?: any) {
+        // Remove duplicate Access-Control-Allow-Origin headers
+        const headers = res.getHeaders();
+        const originHeader = headers['access-control-allow-origin'] || headers['Access-Control-Allow-Origin'];
+        if (originHeader && Array.isArray(originHeader)) {
+          // Multiple values found, keep only the first one
+          res.removeHeader('Access-Control-Allow-Origin');
+          res.removeHeader('access-control-allow-origin');
+          res.setHeader('Access-Control-Allow-Origin', originHeader[0]);
+        } else if (originHeader && typeof originHeader === 'string' && originHeader.includes(',')) {
+          // Single string with comma-separated values, keep only first
+          const firstValue = originHeader.split(',')[0].trim();
+          res.removeHeader('Access-Control-Allow-Origin');
+          res.removeHeader('access-control-allow-origin');
+          res.setHeader('Access-Control-Allow-Origin', firstValue);
         }
-      },
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
-      allowedHeaders: [
-        'Content-Type',
-        'Authorization',
-        'X-Requested-With',
-        'Accept',
-        'Origin',
-        'X-Tenant-Id',
-        'X-Tenant-Domain',
-        'x-tenant-id',
-        'x-tenant-domain',
-        'X-Session-ID',
-        'x-session-id',
-        'X-Admin-API-Key',
-        'x-admin-api-key',
-        'X-API-Key',
-        'X-ApiKey',
-        'x-api-key',
-        'x-apikey'
-      ],
-      exposedHeaders: [
-        'Content-Type',
-        'Authorization'
-      ],
-      preflightContinue: false,
-      optionsSuccessStatus: 204,
+        return originalEnd(chunk, encoding, cb);
+      };
+      next();
     });
     
     // Enable cookie parser AFTER CORS
