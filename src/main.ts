@@ -18,24 +18,7 @@ async function bootstrap() {
   try {
     const app = await NestFactory.create(AppModule);
     
-    // Enable cookie parser
-    app.use(cookieParser());
-    
-    // Increase body limit for image uploads
-    app.use(json({ limit: '50mb' }));
-    app.use(urlencoded({ extended: true, limit: '50mb' }));
-
-    // Set global prefix to handle /api/api/... routes from frontend
-    // Frontend calls /api/api/categories, backend receives /api/api/categories
-    // With global prefix 'api', route becomes /api/categories which matches controller
-    app.setGlobalPrefix('api');
-    
-    // Verify JWT secret is loaded
-    if (!process.env.JWT_SECRET) {
-      logger.error('❌ JWT_SECRET is not configured in environment variables');
-      process.exit(1);
-    }
-
+    // CRITICAL: Enable CORS FIRST before any other middleware to prevent duplicate headers
     // Enhanced CORS configuration for frontend and subdomains
     // app.enableCors({
     //   origin: (origin, callback) => {
@@ -182,8 +165,25 @@ async function bootstrap() {
       optionsSuccessStatus: 204,
     });
     
+    // Enable cookie parser AFTER CORS
+    app.use(cookieParser());
+    
+    // Increase body limit for image uploads
+    app.use(json({ limit: '50mb' }));
+    app.use(urlencoded({ extended: true, limit: '50mb' }));
 
-    // Security Hardening
+    // Set global prefix to handle /api/api/... routes from frontend
+    // Frontend calls /api/api/categories, backend receives /api/api/categories
+    // With global prefix 'api', route becomes /api/categories which matches controller
+    app.setGlobalPrefix('api');
+    
+    // Verify JWT secret is loaded
+    if (!process.env.JWT_SECRET) {
+      logger.error('❌ JWT_SECRET is not configured in environment variables');
+      process.exit(1);
+    }
+
+    // Security Hardening (AFTER CORS)
     app.use(helmet(securityConfig.helmet));
     app.useGlobalPipes(new ValidationPipe({
       whitelist: true,
