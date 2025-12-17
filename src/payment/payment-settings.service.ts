@@ -44,6 +44,7 @@ export class PaymentSettingsService {
   /**
    * Get available payment methods for a tenant from the database
    * Includes both tenant-specific gateways and admin-created global gateways (where tenantId is null)
+   * Now respects the payment options toggle settings
    */
   async getAvailablePaymentMethods(tenantId: string): Promise<AvailablePaymentMethod[]> {
     try {
@@ -69,10 +70,38 @@ export class PaymentSettingsService {
         ],
       });
 
+      // Get enabled payment options for this tenant
+      const enabledOptions = await this.prisma.tenantPaymentOption.findMany({
+        where: {
+          tenantId,
+          isEnabled: true,
+        },
+        select: {
+          paymentMethodId: true,
+          displayOrder: true,
+        },
+      });
+
+      const enabledMethodIds = new Set(enabledOptions.map(opt => opt.paymentMethodId));
+      const orderMap = new Map(enabledOptions.map(opt => [opt.paymentMethodId, opt.displayOrder]));
+
+      // Filter methods to only include enabled ones (if tenant has configured options)
+      // If no options configured, return all methods (backward compatibility)
+      let filteredMethods = methods;
+      if (enabledOptions.length > 0) {
+        filteredMethods = methods.filter(m => enabledMethodIds.has(m.id));
+        // Sort by display order
+        filteredMethods.sort((a, b) => {
+          const orderA = orderMap.get(a.id) || 999;
+          const orderB = orderMap.get(b.id) || 999;
+          return orderA - orderB;
+        });
+      }
+
       // Always include Cash on Delivery as a default option if not already present
-      const hasCOD = methods.some((m: any) => m.provider === 'CASH_ON_DELIVERY');
+      const hasCOD = filteredMethods.some((m: any) => m.provider === 'CASH_ON_DELIVERY');
       if (!hasCOD) {
-        methods.push({
+        filteredMethods.push({
           id: 'default-cod',
           provider: 'CASH_ON_DELIVERY',
           name: 'الدفع عند الاستلام',
@@ -81,7 +110,7 @@ export class PaymentSettingsService {
         });
       }
 
-      return methods;
+      return filteredMethods;
     } catch (error) {
       // Return default COD method if there's an error
       console.error('Error fetching available payment methods:', error);

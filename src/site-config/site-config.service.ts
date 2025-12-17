@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PageService } from '../page/page.service';
 import { PaymentSettingsService } from '../payment/payment-settings.service';
@@ -9,6 +9,8 @@ import { PaymentSettingsService } from '../payment/payment-settings.service';
  */
 @Injectable()
 export class SiteConfigService {
+  private readonly logger = new Logger(SiteConfigService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly pageService: PageService,
@@ -193,89 +195,142 @@ export class SiteConfigService {
 
   /** Update (or create) configuration for a tenant */
   async upsertConfig(tenantId: string, data: any) {
-    if (!tenantId) {
-      throw new Error('Tenant ID is required to update configuration');
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      this.logger.error('upsertConfig called with invalid tenantId:', tenantId);
+      throw new BadRequestException('Valid tenant ID is required to update configuration');
     }
 
-    const { settings, ...siteConfigData } = data;
+    // Validate data structure
+    if (!data || typeof data !== 'object') {
+      this.logger.error('Invalid data structure provided to upsertConfig:', typeof data);
+      throw new BadRequestException('Invalid configuration data. Expected an object.');
+    }
 
-    // Update Tenant settings if provided
-    if (settings) {
-      // Extract paymentMethods and hyperpayConfig from settings if present
-      const { paymentMethods: pm, hyperpayConfig: hp, subdomain, tenantName, ...restSettings } = settings;
-      
-      // Update PaymentSettingsService if payment info is present
-      if (pm || hp) {
-        const paymentUpdate: any = {};
-        
-        if (pm) {
-          paymentUpdate.hyperPayEnabled = pm.includes('HYPERPAY');
-          paymentUpdate.stripeEnabled = pm.includes('STRIPE');
-          paymentUpdate.payPalEnabled = pm.includes('PAYPAL');
-          paymentUpdate.codEnabled = pm.includes('CASH_ON_DELIVERY');
-        }
-
-        if (hp) {
-          paymentUpdate.hyperPayEntityId = hp.entityId;
-          paymentUpdate.hyperPayAccessToken = hp.accessToken;
-          paymentUpdate.hyperPayTestMode = hp.testMode;
-          // paymentUpdate.hyperPayCurrency = hp.currency; // Not usually editable in this form
-        }
-
-        await this.paymentSettingsService.updateSettings(tenantId, paymentUpdate);
-      }
-
-      // Update Tenant settings (without payment config)
-      await this.prisma.tenant.update({
+    try {
+      // Verify tenant exists
+      const tenant = await this.prisma.tenant.findUnique({
         where: { id: tenantId },
-        data: { settings: restSettings },
+        select: { id: true },
       });
 
-      // Sync currency to CurrencySettings if currency was updated
-      if (restSettings.currency) {
-        const currencyCode = String(restSettings.currency).toUpperCase();
-        // Check if currency exists in Currency table
-        const currencyExists = await this.prisma.currency.findUnique({
-          where: {
-            tenantId_code: {
-              tenantId,
-              code: currencyCode,
-            },
-          },
+      if (!tenant) {
+        this.logger.error(`Tenant ${tenantId} does not exist`);
+        throw new BadRequestException(`Tenant ${tenantId} does not exist. Please set up your market first.`);
+      }
+
+      const { settings, ...siteConfigData } = data;
+
+      // Update Tenant settings if provided
+      if (settings) {
+        // Extract paymentMethods and hyperpayConfig from settings if present
+        const { paymentMethods: pm, hyperpayConfig: hp, subdomain, tenantName, ...restSettings } = settings;
+        
+        // Update PaymentSettingsService if payment info is present
+        if (pm || hp) {
+          const paymentUpdate: any = {};
+          
+          if (pm) {
+            paymentUpdate.hyperPayEnabled = pm.includes('HYPERPAY');
+            paymentUpdate.stripeEnabled = pm.includes('STRIPE');
+            paymentUpdate.payPalEnabled = pm.includes('PAYPAL');
+            paymentUpdate.codEnabled = pm.includes('CASH_ON_DELIVERY');
+          }
+
+          if (hp) {
+            paymentUpdate.hyperPayEntityId = hp.entityId;
+            paymentUpdate.hyperPayAccessToken = hp.accessToken;
+            paymentUpdate.hyperPayTestMode = hp.testMode;
+            // paymentUpdate.hyperPayCurrency = hp.currency; // Not usually editable in this form
+          }
+
+          await this.paymentSettingsService.updateSettings(tenantId, paymentUpdate);
+        }
+
+        // Update Tenant settings (without payment config)
+        await this.prisma.tenant.update({
+          where: { id: tenantId },
+          data: { settings: restSettings },
         });
 
-        // Only update CurrencySettings if the currency exists
-        if (currencyExists) {
-          await this.prisma.currencySettings.upsert({
-            where: { tenantId },
-            update: { baseCurrency: currencyCode },
-            create: { tenantId, baseCurrency: currencyCode },
+        // Sync currency to CurrencySettings if currency was updated
+        if (restSettings.currency) {
+          const currencyCode = String(restSettings.currency).toUpperCase();
+          // Check if currency exists in Currency table
+          const currencyExists = await this.prisma.currency.findUnique({
+            where: {
+              tenantId_code: {
+                tenantId,
+                code: currencyCode,
+              },
+            },
           });
+
+          // Only update CurrencySettings if the currency exists
+          if (currencyExists) {
+            await this.prisma.currencySettings.upsert({
+              where: { tenantId },
+              update: { baseCurrency: currencyCode },
+              create: { tenantId, baseCurrency: currencyCode },
+            });
+          }
         }
       }
+
+      // Always upsert SiteConfig (excluding payment methods which are handled by PaymentSettingsService)
+      const defaults = {
+        header: { title: 'Store', links: [] },
+        footer: { links: [] },
+        background: { type: 'color', value: '#ffffff' },
+        language: 'ar',
+        theme: 'light',
+      };
+
+      // We don't save paymentMethods/hyperpayConfig to SiteConfig anymore as PaymentSettingsService is source of truth
+      // But we keep the fields in SiteConfig model for now to avoid schema errors if used elsewhere
+      // Ideally we should remove them from SiteConfig model later
+      
+      // Filter out payment fields from siteConfigData if they exist there too
+      const { paymentMethods: _pm, hyperpayConfig: _hp, ...cleanSiteConfigData } = siteConfigData;
+
+      // Validate and clean siteConfigData to ensure it matches the expected schema
+      const validatedSiteConfigData: any = {};
+      
+      // Only include valid SiteConfig fields
+      const validFields = ['header', 'footer', 'background', 'language', 'theme'];
+      for (const field of validFields) {
+        if (cleanSiteConfigData[field] !== undefined) {
+          validatedSiteConfigData[field] = cleanSiteConfigData[field];
+        }
+      }
+
+      return await this.prisma.siteConfig.upsert({
+        where: { tenantId },
+        create: { tenantId, ...defaults, ...validatedSiteConfigData, paymentMethods: [], hyperpayConfig: {} },
+        update: { ...validatedSiteConfigData },
+      });
+    } catch (error: any) {
+      this.logger.error(`Error upserting site config for tenant ${tenantId}:`, error);
+      
+      // Provide more specific error messages
+      if (error instanceof BadRequestException || error instanceof ForbiddenException) {
+        throw error;
+      }
+      
+      if (error.code === 'P2002') {
+        throw new BadRequestException('A configuration with this tenant ID already exists. Please try updating instead.');
+      }
+      if (error.code === 'P2003') {
+        throw new BadRequestException('Invalid reference in configuration data. Please check your settings.');
+      }
+      if (error.message?.includes('Unknown arg') || error.message?.includes('Unknown field')) {
+        throw new BadRequestException(`Invalid field in configuration: ${error.message}`);
+      }
+      
+      // Generic error with more context
+      const errorMsg = error?.message || 'Unknown error';
+      this.logger.error(`Site config update error details:`, { errorMsg, errorCode: error?.code, stack: error?.stack });
+      throw new BadRequestException(`Failed to update site configuration: ${errorMsg}`);
     }
-
-    // Always upsert SiteConfig (excluding payment methods which are handled by PaymentSettingsService)
-    const defaults = {
-      header: { title: 'Store', links: [] },
-      footer: { links: [] },
-      background: { type: 'color', value: '#ffffff' },
-      language: 'ar',
-      theme: 'light',
-    };
-
-    // We don't save paymentMethods/hyperpayConfig to SiteConfig anymore as PaymentSettingsService is source of truth
-    // But we keep the fields in SiteConfig model for now to avoid schema errors if used elsewhere
-    // Ideally we should remove them from SiteConfig model later
-    
-    // Filter out payment fields from siteConfigData if they exist there too
-    const { paymentMethods: _pm, hyperpayConfig: _hp, ...cleanSiteConfigData } = siteConfigData;
-
-    return this.prisma.siteConfig.upsert({
-      where: { tenantId },
-      create: { tenantId, ...defaults, ...cleanSiteConfigData, paymentMethods: [], hyperpayConfig: {} },
-      update: { ...cleanSiteConfigData },
-    });
   }
 
   async upsertConfigForUser(userId: string, userEmail: string, data: any) {

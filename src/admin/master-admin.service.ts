@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import { PlanType, Status, UserRole } from '@prisma/client';
 import * as os from 'os';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class MasterAdminService {
@@ -271,6 +272,9 @@ export class MasterAdminService {
       throw new BadRequestException('Subdomain already taken');
     }
 
+    // Hash password before creating user
+    const hashedPassword = await bcrypt.hash(data.ownerPassword, 12);
+
     // Create tenant and owner in a transaction
     const tenant = await this.prisma.$transaction(async (tx) => {
       const newTenant = await tx.tenant.create({
@@ -282,13 +286,14 @@ export class MasterAdminService {
         },
       });
 
-      // Create owner user
+      // Create owner user with hashed password
       await tx.user.create({
         data: {
           email: data.ownerEmail,
-          password: data.ownerPassword, // Should be hashed
+          password: hashedPassword,
           role: 'SHOP_OWNER',
           tenantId: newTenant.id,
+          name: data.name + ' Owner', // Default name
         },
       });
 
@@ -1211,28 +1216,52 @@ export class MasterAdminService {
   // ==================== AI CONFIGURATION ====================
 
   async getGlobalAiScript() {
-    const config = await this.prisma.platformConfig.findUnique({
-      where: { key: 'GLOBAL_AI_SCRIPT' },
-    });
-    
-    if (!config) return { script: '' };
-    
-    return { script: (config.value as any).script || '' };
+    try {
+      const config = await this.prisma.platformConfig.findUnique({
+        where: { key: 'GLOBAL_AI_SCRIPT' },
+      });
+      
+      if (!config) return { script: '' };
+      
+      // Handle both object format { script: "..." } and direct string format
+      if (typeof config.value === 'string') {
+        return { script: config.value };
+      }
+      
+      return { script: (config.value as any)?.script || '' };
+    } catch (error: any) {
+      this.logger.error('Error getting global AI script:', error);
+      // Return empty script on error rather than throwing
+      return { script: '' };
+    }
   }
 
   async updateGlobalAiScript(script: string) {
-    return this.prisma.platformConfig.upsert({
-      where: { key: 'GLOBAL_AI_SCRIPT' },
-      update: {
-        value: { script },
-      },
-      create: {
-        key: 'GLOBAL_AI_SCRIPT',
-        value: { script },
-        description: 'Global AI training script for the assistant',
-        isPublic: false,
-      },
-    });
+    try {
+      return await this.prisma.platformConfig.upsert({
+        where: { key: 'GLOBAL_AI_SCRIPT' },
+        update: {
+          value: { script },
+          updatedAt: new Date(),
+        },
+        create: {
+          key: 'GLOBAL_AI_SCRIPT',
+          value: { script },
+          description: 'Global AI training script for the assistant',
+          category: 'AI_CONFIGURATION',
+          isEditable: true,
+        },
+      });
+    } catch (error: any) {
+      this.logger.error('Error updating global AI script:', error);
+      this.logger.error('Error details:', {
+        name: error?.name,
+        message: error?.message,
+        code: error?.code,
+        meta: error?.meta,
+      });
+      throw new BadRequestException(`Failed to update AI script: ${error?.message || 'Unknown error'}`);
+    }
   }
 
   // ==================== DATABASE MANAGEMENT ====================
@@ -1266,6 +1295,64 @@ export class MasterAdminService {
       this.logger.error('Failed to reset database', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new BadRequestException('Failed to reset database: ' + errorMessage);
+    }
+  }
+
+  // ==================== ADMIN API KEY MANAGEMENT ====================
+
+  async getAdminApiKey() {
+    try {
+      // Try to get from system config (stored in a special tenant with id 'system')
+      const systemConfig = await this.prisma.siteConfig.findUnique({
+        where: { tenantId: 'system' },
+        select: { settings: true },
+      });
+
+      if (systemConfig?.settings && typeof systemConfig.settings === 'object') {
+        const settings = systemConfig.settings as any;
+        if (settings.adminApiKey) {
+          return { apiKey: settings.adminApiKey };
+        }
+      }
+
+      // Fallback to environment variable
+      const envKey = process.env.ADMIN_API_KEY || 'Saeaa2025Admin!';
+      return { apiKey: envKey };
+    } catch (error) {
+      this.logger.error('Failed to get admin API key:', error);
+      // Fallback to environment variable
+      const envKey = process.env.ADMIN_API_KEY || 'Saeaa2025Admin!';
+      return { apiKey: envKey };
+    }
+  }
+
+  async setAdminApiKey(apiKey: string) {
+    try {
+      // Store in system config (special tenant with id 'system')
+      const existingConfig = await this.prisma.siteConfig.findUnique({
+        where: { tenantId: 'system' },
+      });
+
+      const settings = existingConfig?.settings 
+        ? { ...(existingConfig.settings as any), adminApiKey: apiKey }
+        : { adminApiKey: apiKey };
+
+      await this.prisma.siteConfig.upsert({
+        where: { tenantId: 'system' },
+        create: {
+          tenantId: 'system',
+          settings: settings,
+        },
+        update: {
+          settings: settings,
+        },
+      });
+
+      this.logger.log('Admin API key updated successfully');
+      return { success: true, message: 'Admin API key updated successfully' };
+    } catch (error) {
+      this.logger.error('Failed to set admin API key:', error);
+      throw new BadRequestException('Failed to set admin API key');
     }
   }
 }

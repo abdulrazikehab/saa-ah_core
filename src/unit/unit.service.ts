@@ -73,15 +73,28 @@ export class UnitService {
   }
 
   async findAll(tenantId: string, includeInactive: boolean = false) {
-    const where: any = { tenantId };
-    if (!includeInactive) {
-      where.isActive = true;
-    }
+    try {
+      if (!tenantId) {
+        this.logger.error('findAll called with null/undefined tenantId');
+        throw new BadRequestException('Tenant ID is required');
+      }
 
-    return this.prisma.unit.findMany({
-      where,
-      orderBy: { code: 'asc' },
-    });
+      const where: any = { tenantId };
+      if (!includeInactive) {
+        where.isActive = true;
+      }
+
+      return await this.prisma.unit.findMany({
+        where,
+        orderBy: { code: 'asc' },
+      });
+    } catch (error: any) {
+      this.logger.error(`Error in findAll units for tenant ${tenantId}:`, error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to fetch units: ${error?.message || 'Unknown error'}`);
+    }
   }
 
   async findOne(tenantId: string, id: string) {

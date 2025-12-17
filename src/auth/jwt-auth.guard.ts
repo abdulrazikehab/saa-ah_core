@@ -1,4 +1,4 @@
-import { Injectable, ExecutionContext, UnauthorizedException, CanActivate, Optional } from '@nestjs/common';
+import { Injectable, ExecutionContext, UnauthorizedException, CanActivate, Optional, Logger } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -8,6 +8,8 @@ import { ApiKeyService } from '../api-key/api-key.service';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
+  private readonly logger = new Logger(JwtAuthGuard.name);
+
   constructor(
     private readonly reflector: Reflector,
     private readonly jwtService: JwtService,
@@ -77,9 +79,13 @@ export class JwtAuthGuard implements CanActivate {
     try {
       const secret = this.configService.get<string>('JWT_SECRET');
       if (!secret) {
-        throw new Error('JWT_SECRET is not configured');
+        this.logger.error('JWT_SECRET is not configured in core service');
+        throw new UnauthorizedException('JWT_SECRET is not configured');
       }
 
+      // Log token info for debugging (without exposing the actual token)
+      this.logger.debug(`Verifying JWT token (length: ${token?.length || 0}, secret configured: ${!!secret})`);
+      
       const payload = this.jwtService.verify(token, { secret });
       
       // Allow users without tenantId (for tenant setup flow)
@@ -92,9 +98,32 @@ export class JwtAuthGuard implements CanActivate {
       };
       request.tenantId = payload.tenantId || null;
       return true;
-    } catch (error) {
-      // Re-throw authentication errors
-      throw error;
+    } catch (error: any) {
+      // Log the error for debugging
+      this.logger.warn(`JWT verification failed: ${error?.name || 'Unknown'} - ${error?.message || 'No message'}`);
+      
+      // Handle JWT verification errors with better messages
+      if (error?.name === 'JsonWebTokenError') {
+        if (error.message?.includes('invalid signature')) {
+          this.logger.error('JWT signature verification failed - possible JWT_SECRET mismatch between services');
+          throw new UnauthorizedException('Invalid authentication token. Please login again.');
+        }
+        if (error.message?.includes('jwt expired')) {
+          this.logger.debug('JWT token has expired');
+          throw new UnauthorizedException('Authentication token has expired. Please login again.');
+        }
+        if (error.message?.includes('jwt malformed')) {
+          this.logger.warn('JWT token is malformed');
+          throw new UnauthorizedException('Invalid token format. Please login again.');
+        }
+        throw new UnauthorizedException(`Authentication failed: ${error.message || 'Invalid token'}`);
+      }
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      // For other errors, wrap in UnauthorizedException
+      this.logger.error(`Unexpected authentication error: ${error?.message || 'Unknown error'}`, error?.stack);
+      throw new UnauthorizedException(`Authentication failed: ${error?.message || 'Unknown error'}`);
     }
   }
 

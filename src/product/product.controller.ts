@@ -11,7 +11,8 @@ import {
   Request,
   BadRequestException,
   ForbiddenException,
-  Headers
+  Headers,
+  Logger
 } from '@nestjs/common';
 import { ProductService } from './product.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -24,6 +25,8 @@ import { AuthenticatedRequest } from '../types/request.types';
 @Controller('products')
 @UseGuards(JwtAuthGuard)
 export class ProductController {
+  private readonly logger = new Logger(ProductController.name);
+
   constructor(private readonly productService: ProductService) {}
 
   private ensureTenantId(tenantId: string | undefined): string {
@@ -40,8 +43,39 @@ export class ProductController {
     @Body() createProductDto: CreateProductDto,
     @Query('upsert') upsert?: boolean
   ) {
-    const tenantId = this.ensureTenantId(req.tenantId);
-    return this.productService.create(tenantId, createProductDto, upsert);
+    try {
+      // TenantRequiredGuard should have already validated tenantId
+      // Only use actual tenantId sources, not user.id
+      const tenantId = req.user?.tenantId || req.tenantId;
+      
+      if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+        this.logger.error('Product creation failed: Invalid tenantId', {
+          tenantId,
+          hasUserTenantId: !!req.user?.tenantId,
+          hasReqTenantId: !!req.tenantId,
+          hasUserId: !!req.user?.id,
+          user: req.user
+        });
+        throw new ForbiddenException(
+          'You must set up a market first before creating products. Please go to Market Setup to create your store.'
+        );
+      }
+      
+      this.logger.log(`Creating product for tenant: ${tenantId}`);
+      return this.productService.create(tenantId, createProductDto, upsert);
+    } catch (error: any) {
+      this.logger.error('Error in product creation:', error);
+      if (error instanceof ForbiddenException || error instanceof BadRequestException) {
+        throw error;
+      }
+      // Log the full error for debugging
+      this.logger.error('Product creation error details:', {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name
+      });
+      throw new BadRequestException(`Failed to create product: ${error?.message || 'Unknown error'}`);
+    }
   }
 
   @Public()

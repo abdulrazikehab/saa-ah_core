@@ -10,10 +10,13 @@ import {
   Delete,
   Body,
   Logger,
+  ForbiddenException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { TenantRequiredGuard } from '../guard/tenant-required.guard';
 import { CloudinaryService, CloudinaryUploadResponse } from '../cloudinary/cloudinary.service';
+import { AuthenticatedRequest } from '../types/request.types';
 
 @Controller('upload')
 @UseGuards(JwtAuthGuard)
@@ -37,6 +40,7 @@ export class UploadController {
   }
 
   @Post('images')
+  @UseGuards(TenantRequiredGuard)
   @UseInterceptors(FilesInterceptor('files', 10, {
     limits: {
       fileSize: 50 * 1024 * 1024, // 50MB limit
@@ -52,7 +56,7 @@ export class UploadController {
     },
   }))
   async uploadImages(
-    @Request() req: any,
+    @Request() req: AuthenticatedRequest,
     @UploadedFiles() files: Express.Multer.File[],
   ): Promise<{ 
     message: string; 
@@ -62,12 +66,26 @@ export class UploadController {
       throw new BadRequestException('No files uploaded');
     }
 
-    this.logger.log(`Uploading ${files.length} images for tenant ${req.tenantId}`);
+    // Get tenantId from multiple sources
+    const tenantId = req.user?.tenantId || req.tenantId;
+    
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      this.logger.error('Upload failed: Invalid tenantId', {
+        tenantId,
+        hasUserTenantId: !!req.user?.tenantId,
+        hasReqTenantId: !!req.tenantId,
+      });
+      throw new ForbiddenException(
+        'You must set up a market first before uploading images. Please go to Market Setup to create your store.'
+      );
+    }
+
+    this.logger.log(`Uploading ${files.length} images for tenant ${tenantId}`);
 
     try {
       const uploadResults = await this.cloudinaryService.uploadMultipleImages(
         files,
-        `tenants/${req.tenantId}/products`
+        `tenants/${tenantId}/products`
       );
 
       this.logger.log(`Successfully uploaded ${uploadResults.length} images`);
@@ -76,9 +94,9 @@ export class UploadController {
         message: `${uploadResults.length} files uploaded successfully`,
         files: uploadResults,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error('File upload failed:', error);
-      throw new BadRequestException(`File upload failed: ${error}`);
+      throw new BadRequestException(`File upload failed: ${error?.message || 'Unknown error'}`);
     }
   }
 
@@ -102,6 +120,7 @@ export class UploadController {
   }
 
   @Post('product-images')
+  @UseGuards(TenantRequiredGuard)
   @UseInterceptors(FilesInterceptor('images', 10, {
     limits: {
       fileSize: 50 * 1024 * 1024, // 50MB limit
@@ -116,32 +135,51 @@ export class UploadController {
     },
   }))
   async uploadProductImages(
-    @Request() req: any,
+    @Request() req: AuthenticatedRequest,
     @UploadedFiles() files: Express.Multer.File[],
   ) {
     if (!files || files.length === 0) {
       throw new BadRequestException('No images uploaded');
     }
 
-    this.logger.log(`Uploading ${files.length} product images for tenant ${req.tenantId}`);
+    // Get tenantId from multiple sources
+    const tenantId = req.user?.tenantId || req.tenantId;
+    
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      this.logger.error('Product image upload failed: Invalid tenantId', {
+        tenantId,
+        hasUserTenantId: !!req.user?.tenantId,
+        hasReqTenantId: !!req.tenantId,
+      });
+      throw new ForbiddenException(
+        'You must set up a market first before uploading images. Please go to Market Setup to create your store.'
+      );
+    }
 
-    const uploadResults = await this.cloudinaryService.uploadMultipleImages(
-      files,
-      `tenants/${req.tenantId}/products`
-    );
+    this.logger.log(`Uploading ${files.length} product images for tenant ${tenantId}`);
 
-    // Return with additional optimized URLs
-    const enhancedResults = uploadResults.map(result => ({
-      ...result,
-      optimizedUrl: this.cloudinaryService.generateOptimizedUrl(result.publicId),
-      thumbnailUrl: this.cloudinaryService.generateThumbnailUrl(result.publicId),
-    }));
+    try {
+      const uploadResults = await this.cloudinaryService.uploadMultipleImages(
+        files,
+        `tenants/${tenantId}/products`
+      );
 
-    this.logger.log(`Successfully uploaded ${enhancedResults.length} product images`);
+      // Return with additional optimized URLs
+      const enhancedResults = uploadResults.map(result => ({
+        ...result,
+        optimizedUrl: this.cloudinaryService.generateOptimizedUrl(result.publicId),
+        thumbnailUrl: this.cloudinaryService.generateThumbnailUrl(result.publicId),
+      }));
 
-    return {
-      message: 'Product images uploaded successfully',
-      images: enhancedResults,
-    };
+      this.logger.log(`Successfully uploaded ${enhancedResults.length} product images`);
+
+      return {
+        message: 'Product images uploaded successfully',
+        images: enhancedResults,
+      };
+    } catch (error: any) {
+      this.logger.error('Product image upload failed:', error);
+      throw new BadRequestException(`Product image upload failed: ${error?.message || 'Unknown error'}`);
+    }
   }
 }

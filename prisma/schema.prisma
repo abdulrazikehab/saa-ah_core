@@ -3,26 +3,40 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
- shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 model Tenant {
-  id                 String              @id @default(cuid())
+  id                 String               @id @default(cuid())
   name               String
-  subdomain          String              @unique
-  plan               PlanType            @default(STARTER)
-  status             Status              @default(ACTIVE)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  subdomain          String               @unique
+  plan               PlanType             @default(STARTER)
+  status             Status               @default(ACTIVE)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
   settings           Json?
   description        String?
   templateId         String?
+  activityLogs       ActivityLog[]        @relation("ActivityLogs")
+  apiKeys            ApiKey[]
+  banks              Bank[]
+  brands             Brand[]
+  cardBatches        CardBatch[]
+  cardInventory      CardInventory[]
+  cardOrders         CardOrder[]
+  cardProducts       CardProduct[]
   carts              Cart[]
   categories         Category[]
+  chatMessages       ChatMessage[]        @relation("ChatMessages")
   coupons            Coupon[]
+  currencies         Currency[]
+  currencySettings   CurrencySettings?
   customDomains      CustomDomain[]
+  featureFlags       FeatureFlag[]
+  integrations       Integration[]
+  merchants          Merchant[]
   orders             Order[]
   pages              Page[]
   paymentMethods     PaymentMethod[]
@@ -30,80 +44,65 @@ model Tenant {
   productCollections ProductCollection[]
   productTags        ProductTag[]
   products           Product[]
+  promotions         Promotion[]
+  securityEvents     SecurityEvent[]
   shippingZones      ShippingZone[]
   siteConfig         SiteConfig?
   sslCertificates    SSLCertificate[]
+  suppliers          Supplier[]
+  supportTickets     SupportTicket[]
   taxRates           TaxRate[]
   themes             Theme[]
-  users              User[]
-  webhookEndpoints   WebhookEndpoint[]
   transactions       Transaction[]
-  activityLogs       ActivityLog[]       @relation("ActivityLogs")
-  chatMessages       ChatMessage[]       @relation("ChatMessages")
-  featureFlags       FeatureFlag[]
-  integrations       Integration[]
-  userGifts          UserGift[]
-  securityEvents     SecurityEvent[]
-  suppliers          Supplier[]
-  brands             Brand[]
-  currencies         Currency[]
-  currencySettings   CurrencySettings?
   units              Unit[]
-  // Digital Cards Marketplace
-  cardProducts       CardProduct[]
-  cardInventory      CardInventory[]
-  cardOrders         CardOrder[]
-  wallets            Wallet[]
+  userGifts          UserGift[]
+  users              User[]
   topUpRequests      WalletTopUpRequest[]
-  banks              Bank[]
-  supportTickets     SupportTicket[]
-  cardBatches        CardBatch[]
-  // Merchant Dealer App
-  merchants          Merchant[]
-  promotions         Promotion[]
-  apiKeys            ApiKey[]
+  wallets            Wallet[]
+  webhookEndpoints   WebhookEndpoint[]
+  tenantPaymentOptions TenantPaymentOption[]
 
   @@map("tenants")
 }
 
 model Product {
-  id              String                  @id @default(cuid())
-  tenantId        String
-  productId       String? // Optional product ID
-  productCode     String? // External supplier product code
-  name            String
-  description     String?
-  sku             String?                 @unique
-  price           Decimal
-  compareAtPrice  Decimal?
-  costPerItem     Decimal?
-  isAvailable     Boolean                 @default(true)
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
-  isPublished     Boolean                 @default(true)
-  seoDescription  String?
-  seoTitle        String?
-  nameAr          String?
-  descriptionAr   String?
-  barcode         String?
-  featured        Boolean                 @default(false)
-  weight          Decimal?
-  dimensions      String?
-  brandId         String? // Brand reference
-  odooProductId   String? // Odoo integration ID
-  cartItems       CartItem[]
-  orderItems      OrderItem[]
-  categories      ProductCategory[]
-  collectionItems ProductCollectionItem[]
-  images          ProductImage[]
-  tagItems        ProductTagItem[]
-  variants        ProductVariant[]
-  suppliers       ProductSupplier[]
+  id                String                  @id @default(cuid())
+  tenantId          String
+  productId         String?
+  productCode       String?
+  name              String
+  description       String?
+  sku               String?                 @unique
+  price             Decimal
+  compareAtPrice    Decimal?
+  costPerItem       Decimal?
+  isAvailable       Boolean                 @default(true)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  isPublished       Boolean                 @default(true)
+  seoDescription    String?
+  seoTitle          String?
+  nameAr            String?
+  descriptionAr     String?
+  barcode           String?
+  featured          Boolean                 @default(false)
+  weight            Decimal?
+  dimensions        String?
+  brandId           String?
+  odooProductId     String?
+  unitId            String?
+  cartItems         CartItem[]
+  orderItems        OrderItem[]
+  categories        ProductCategory[]
+  collectionItems   ProductCollectionItem[]
+  images            ProductImage[]
+  suppliers         ProductSupplier[]
+  tagItems          ProductTagItem[]
+  variants          ProductVariant[]
+  brand             Brand?                  @relation(fields: [brandId], references: [id])
+  tenant            Tenant                  @relation(fields: [tenantId], references: [id])
+  unit              Unit?                   @relation(fields: [unitId], references: [id])
   supplierPurchases SupplierPurchase[]
-  brand           Brand?                  @relation(fields: [brandId], references: [id])
-  unitId          String? // Unit reference
-  unit            Unit?                   @relation(fields: [unitId], references: [id])
-  tenant          Tenant                  @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
   @@index([isAvailable, isPublished])
@@ -136,25 +135,25 @@ model ProductVariant {
 }
 
 model Category {
-  id           String            @id @default(cuid())
-  tenantId     String
-  name         String
-  nameAr       String?           // Arabic name
-  description  String?
-  descriptionAr String?          // Arabic description
-  slug         String
-  icon         String?           // Category icon (emoji or icon name)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  image        String?
-  isActive     Boolean           @default(true)
-  parentId     String?
-  sortOrder    Int               @default(0) // Display order
-  tenant       Tenant            @relation(fields: [tenantId], references: [id])
-  products     ProductCategory[]
-  cardProducts CardProduct[]     @relation("CardProductCategory")
-  parent       Category?         @relation("CategoryHierarchy", fields: [parentId], references: [id])
-  children     Category[]        @relation("CategoryHierarchy")
+  id            String            @id @default(cuid())
+  tenantId      String
+  name          String
+  nameAr        String?
+  description   String?
+  descriptionAr String?
+  slug          String
+  icon          String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  image         String?
+  isActive      Boolean           @default(true)
+  parentId      String?
+  sortOrder     Int               @default(0)
+  cardProducts  CardProduct[]     @relation("CardProductCategory")
+  parent        Category?         @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children      Category[]        @relation("CategoryHierarchy")
+  tenant        Tenant            @relation(fields: [tenantId], references: [id])
+  products      ProductCategory[]
 
   @@unique([tenantId, slug])
   @@index([tenantId])
@@ -416,7 +415,7 @@ model TaxRate {
 
 model PaymentMethod {
   id          String          @id @default(cuid())
-  tenantId    String
+  tenantId    String?
   provider    PaymentProvider @default(HYPERPAY)
   name        String
   isActive    Boolean         @default(true)
@@ -425,10 +424,28 @@ model PaymentMethod {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   orders      Order[]
-  tenant      Tenant          @relation(fields: [tenantId], references: [id])
+  tenant      Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantPaymentOptions TenantPaymentOption[]
 
   @@index([tenantId, provider])
   @@map("payment_methods")
+}
+
+model TenantPaymentOption {
+  id            String        @id @default(cuid())
+  tenantId      String
+  paymentMethodId String
+  isEnabled     Boolean       @default(false)
+  displayOrder  Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  paymentMethod PaymentMethod @relation(fields: [paymentMethodId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, paymentMethodId])
+  @@index([tenantId])
+  @@index([paymentMethodId])
+  @@map("tenant_payment_options")
 }
 
 model Transaction {
@@ -436,24 +453,24 @@ model Transaction {
   tenantId          String
   orderId           String?
   orderNumber       String?
-  amount            Decimal // Total transaction amount
-  platformFee       Decimal           @default(0) // Platform commission
-  merchantEarnings  Decimal // Amount merchant receives (amount - platformFee)
+  amount            Decimal
+  platformFee       Decimal           @default(0)
+  merchantEarnings  Decimal
   currency          String            @default("USD")
   status            TransactionStatus @default(PENDING)
   paymentProvider   PaymentProvider
-  paymentMethodType String? // e.g., "credit_card", "debit_card", "wallet"
-  transactionId     String? // External payment gateway transaction ID
+  paymentMethodType String?
+  transactionId     String?
   customerEmail     String?
   customerName      String?
   description       String?
-  metadata          Json? // Additional payment details
+  metadata          Json?
   processedAt       DateTime?
-  settledAt         DateTime? // When funds were settled to merchant
+  settledAt         DateTime?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
-  tenant            Tenant            @relation(fields: [tenantId], references: [id])
   order             Order?            @relation(fields: [orderId], references: [id])
+  tenant            Tenant            @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId, status])
   @@index([orderId])
@@ -642,35 +659,33 @@ model SiteConfig {
 }
 
 model User {
-  id             String          @id @default(cuid())
-  email          String          @unique
-  password       String
-  name           String?
-  role           UserRole        @default(SHOP_OWNER)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  tenantId       String?
-  avatar         String?
-  recoveryId     String?         @unique // Secret recovery ID for account recovery
-  tenant         Tenant?         @relation(fields: [tenantId], references: [id])
-  sentMessages   ChatMessage[]   @relation("SentMessages")
-  gifts          UserGift[]
-  securityEvents SecurityEvent[]
-  // Digital Cards Marketplace
-  cardsPurchased    CardInventory[]       @relation("CardsSold")
-  cardOrders        CardOrder[]           @relation("CardOrders")
-  wallet            Wallet?
-  topUpRequests     WalletTopUpRequest[]  @relation("TopUpRequests")
-  processedTopUps   WalletTopUpRequest[]  @relation("ProcessedTopUps")
-  bankAccounts      BankAccount[]         @relation("BankAccounts")
-  favorites         MerchantFavorite[]    @relation("Favorites")
-  supportTickets    SupportTicket[]       @relation("SupportTickets")
-  assignedTickets   SupportTicket[]       @relation("AssignedTickets")
-  ticketReplies     TicketReply[]         @relation("TicketReplies")
-  importedBatches   CardBatch[]           @relation("ImportedBatches")
-  // Merchant Dealer App
-  merchant          Merchant?
-  employee          Employee?
+  id              String               @id @default(cuid())
+  email           String               @unique
+  password        String
+  name            String?
+  role            UserRole             @default(SHOP_OWNER)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  tenantId        String?
+  avatar          String?
+  recoveryId      String?              @unique
+  bankAccounts    BankAccount[]        @relation("BankAccounts")
+  importedBatches CardBatch[]          @relation("ImportedBatches")
+  cardsPurchased  CardInventory[]      @relation("CardsSold")
+  cardOrders      CardOrder[]          @relation("CardOrders")
+  sentMessages    ChatMessage[]        @relation("SentMessages")
+  employee        Employee?
+  favorites       MerchantFavorite[]   @relation("Favorites")
+  merchant        Merchant?
+  securityEvents  SecurityEvent[]
+  assignedTickets SupportTicket[]      @relation("AssignedTickets")
+  supportTickets  SupportTicket[]      @relation("SupportTickets")
+  ticketReplies   TicketReply[]        @relation("TicketReplies")
+  gifts           UserGift[]
+  tenant          Tenant?              @relation(fields: [tenantId], references: [id])
+  processedTopUps WalletTopUpRequest[] @relation("ProcessedTopUps")
+  topUpRequests   WalletTopUpRequest[] @relation("TopUpRequests")
+  wallet          Wallet?
 
   @@index([tenantId])
   @@map("users")
@@ -684,7 +699,7 @@ model ActivityLog {
   action    String
   details   Json?
   createdAt DateTime @default(now())
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], name: "ActivityLogs")
+  tenant    Tenant   @relation("ActivityLogs", fields: [tenantId], references: [id])
 
   @@index([tenantId, createdAt])
   @@map("activity_logs")
@@ -696,11 +711,1162 @@ model ChatMessage {
   senderId  String
   content   String
   createdAt DateTime @default(now())
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], name: "ChatMessages")
-  sender    User     @relation(fields: [senderId], references: [id], name: "SentMessages")
+  sender    User     @relation("SentMessages", fields: [senderId], references: [id])
+  tenant    Tenant   @relation("ChatMessages", fields: [tenantId], references: [id])
 
   @@index([tenantId, createdAt])
   @@map("chat_messages")
+}
+
+model FeatureFlag {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  feature   String
+  enabled   Boolean  @default(true)
+  config    Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, feature])
+  @@index([feature])
+  @@map("feature_flags")
+}
+
+model PaymentPlan {
+  id             String   @id @default(cuid())
+  name           String
+  nameAr         String?
+  description    String?
+  installments   Int
+  interestRate   Decimal  @default(0)
+  minAmount      Decimal?
+  maxAmount      Decimal?
+  isActive       Boolean  @default(true)
+  allowedTenants String[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("payment_plans")
+}
+
+model PlatformConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  category    String
+  isEditable  Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?
+
+  @@index([category])
+  @@map("platform_configs")
+}
+
+model PlatformFeature {
+  id            String   @id @default(cuid())
+  feature       String   @unique
+  displayName   String
+  displayNameAr String?
+  description   String?
+  category      String
+  requiredPlan  PlanType @default(STARTER)
+  isGlobal      Boolean  @default(true)
+  isEnabled     Boolean  @default(true)
+  config        Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("platform_features")
+}
+
+model UserGift {
+  id          String     @id @default(cuid())
+  userId      String?
+  tenantId    String?
+  giftType    GiftType
+  giftValue   String
+  giftDetails Json?
+  status      GiftStatus @default(ACTIVE)
+  expiresAt   DateTime?
+  grantedBy   String
+  grantedAt   DateTime   @default(now())
+  message     String?
+  tenant      Tenant?    @relation(fields: [tenantId], references: [id])
+  user        User?      @relation(fields: [userId], references: [id])
+
+  @@map("user_gifts")
+}
+
+model SubscriptionPlan {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  name          String
+  nameAr        String?
+  description   String?
+  descriptionAr String?
+  price         Decimal
+  currency      String   @default("SAR")
+  billingCycle  String   @default("MONTHLY")
+  features      String[]
+  featuresAr    String[]
+  limits        Json?
+  isActive      Boolean  @default(true)
+  isPopular     Boolean  @default(false)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("subscription_plans")
+}
+
+model Integration {
+  id          String          @id @default(cuid())
+  tenantId    String?
+  name        String
+  type        IntegrationType
+  provider    String
+  credentials Json
+  settings    Json?
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  tenant      Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, type])
+  @@map("integrations")
+}
+
+model Partner {
+  id              String         @id @default(cuid())
+  name            String
+  nameAr          String?
+  email           String         @unique
+  phone           String?
+  logo            String?
+  description     String?
+  descriptionAr   String?
+  website         String?
+  commissionType  CommissionType @default(PERCENTAGE)
+  commissionValue Decimal
+  isActive        Boolean        @default(true)
+  allowedFeatures String[]
+  settings        Json?
+  aiScript        String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@map("partners")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  userRole   UserRole
+  action     String
+  resource   String
+  resourceId String?
+  changes    Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+model Supplier {
+  id                  String             @id @default(cuid())
+  tenantId            String
+  name                String
+  nameAr              String?
+  email               String?
+  phone               String?
+  contactPerson       String?
+  address             String?
+  discountRate        Decimal            @default(0)
+  isActive            Boolean            @default(true)
+  notes               String?
+  apiEndpoint         String?
+  apiKey              String?
+  apiConfig           Json?
+  autoPurchaseEnabled Boolean            @default(false)
+  priceCheckInterval  Int?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  products            ProductSupplier[]
+  supplierPurchases   SupplierPurchase[]
+  tenant              Tenant             @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([isActive])
+  @@map("suppliers")
+}
+
+model Brand {
+  id                         String        @id @default(cuid())
+  tenantId                   String
+  name                       String
+  nameAr                     String?
+  code                       String?
+  shortName                  String?
+  brandType                  String?
+  logo                       String?
+  image                      String?
+  status                     String        @default("Active")
+  rechargeUsdValue           Decimal?      @default(0)
+  usdValueForCoins           Decimal?      @default(0)
+  safetyStock                Decimal?      @default(0)
+  leadTime                   Int?          @default(0)
+  reorderPoint               Decimal?      @default(0)
+  averageConsumptionPerMonth Decimal?      @default(0)
+  averageConsumptionPerDay   Decimal?      @default(0)
+  abcAnalysis                String?
+  odooCategoryId             String?
+  sortOrder                  Int           @default(0)
+  createdAt                  DateTime      @default(now())
+  updatedAt                  DateTime      @updatedAt
+  tenant                     Tenant        @relation(fields: [tenantId], references: [id])
+  cardProducts               CardProduct[] @relation("CardProductBrand")
+  products                   Product[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([code])
+  @@map("brands")
+}
+
+model ProductSupplier {
+  id                  String    @id @default(cuid())
+  productId           String
+  supplierId          String
+  discountRate        Decimal   @default(0)
+  isPrimary           Boolean   @default(false)
+  supplierProductCode String?
+  lastPrice           Decimal?
+  lastPriceCheck      DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  product             Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplier            Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, supplierId])
+  @@index([productId])
+  @@index([supplierId])
+  @@map("product_suppliers")
+}
+
+model SupplierPurchase {
+  id           String    @id @default(cuid())
+  tenantId     String
+  productId    String
+  supplierId   String
+  quantity     Int       @default(1)
+  unitPrice    Decimal
+  totalAmount  Decimal
+  status       String    @default("PENDING")
+  purchaseDate DateTime  @default(now())
+  cancelledAt  DateTime?
+  refundedAt   DateTime?
+  refundAmount Decimal?
+  reason       String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  product      Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplier     Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([productId])
+  @@index([supplierId])
+  @@index([status])
+  @@map("supplier_purchases")
+}
+
+model Currency {
+  id           String   @id @default(cuid())
+  tenantId     String
+  code         String
+  name         String
+  nameAr       String?
+  symbol       String
+  symbolAr     String?
+  exchangeRate Decimal  @default(1)
+  precision    Int      @default(2)
+  isActive     Boolean  @default(true)
+  isDefault    Boolean  @default(false)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([isActive])
+  @@index([isDefault])
+  @@map("currencies")
+}
+
+model CurrencySettings {
+  id              String    @id @default(cuid())
+  tenantId        String    @unique
+  baseCurrency    String    @default("SAR")
+  autoUpdateRates Boolean   @default(false)
+  lastUpdated     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@map("currency_settings")
+}
+
+model Unit {
+  id          String    @id @default(cuid())
+  tenantId    String
+  name        String
+  nameAr      String?
+  code        String
+  symbol      String?
+  cost        Decimal   @default(0)
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  products    Product[]
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([isActive])
+  @@map("units")
+}
+
+model SecurityEvent {
+  id          String            @id @default(cuid())
+  type        SecurityEventType
+  severity    SecuritySeverity
+  userId      String?
+  tenantId    String?
+  ipAddress   String?
+  userAgent   String?
+  description String
+  metadata    Json?
+  country     String?
+  countryCode String?
+  city        String?
+  region      String?
+  latitude    Float?
+  longitude   Float?
+  isp         String?
+  isVpn       Boolean           @default(false)
+  isProxy     Boolean           @default(false)
+  os          String?
+  browser     String?
+  device      String?
+  createdAt   DateTime          @default(now())
+  tenant      Tenant?           @relation(fields: [tenantId], references: [id])
+  user        User?             @relation(fields: [userId], references: [id])
+
+  @@index([type, severity])
+  @@index([createdAt])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("security_events")
+}
+
+model CardProduct {
+  id                  String                    @id @default(cuid())
+  tenantId            String
+  brandId             String?
+  categoryId          String?
+  name                String
+  nameAr              String?
+  description         String?
+  descriptionAr       String?
+  image               String?
+  productCode         String?
+  denomination        Decimal
+  currency            String                    @default("SAR")
+  wholesalePrice      Decimal
+  retailPrice         Decimal
+  profitMargin        Decimal                   @default(0)
+  taxRate             Decimal                   @default(0.15)
+  isActive            Boolean                   @default(true)
+  isAvailable         Boolean                   @default(true)
+  stockCount          Int                       @default(0)
+  minQuantity         Int                       @default(1)
+  maxQuantity         Int                       @default(100)
+  sortOrder           Int                       @default(0)
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  inventory           CardInventory[]
+  orderItems          CardOrderItem[]
+  brand               Brand?                    @relation("CardProductBrand", fields: [brandId], references: [id])
+  category            Category?                 @relation("CardProductCategory", fields: [categoryId], references: [id])
+  tenant              Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  merchantCartItems   MerchantCartItem[]
+  favorites           MerchantFavorite[]
+  merchantFavoritesV2 MerchantFavoriteV2[]
+  merchantOrderItems  MerchantOrderItem[]
+  merchantOverrides   MerchantProductOverride[]
+  priceAlerts         PriceAlertSubscription[]
+  priceHistory        ProductPriceHistory[]
+
+  @@unique([tenantId, productCode])
+  @@index([tenantId])
+  @@index([brandId])
+  @@index([categoryId])
+  @@index([isActive, isAvailable])
+  @@map("card_products")
+}
+
+model CardInventory {
+  id           String      @id @default(cuid())
+  tenantId     String
+  productId    String
+  cardCode     String
+  cardPin      String?
+  expiryDate   DateTime?
+  batchId      String?
+  importedAt   DateTime    @default(now())
+  status       CardStatus  @default(AVAILABLE)
+  soldAt       DateTime?
+  soldToUserId String?
+  orderId      String?
+  order        CardOrder?  @relation(fields: [orderId], references: [id])
+  product      CardProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  soldToUser   User?       @relation("CardsSold", fields: [soldToUserId], references: [id])
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, cardCode])
+  @@index([tenantId])
+  @@index([productId])
+  @@index([status])
+  @@index([batchId])
+  @@map("card_inventory")
+}
+
+model CardOrder {
+  id                 String             @id @default(cuid())
+  tenantId           String
+  userId             String
+  orderNumber        String
+  status             CardOrderStatus    @default(PENDING)
+  totalAmount        Decimal
+  taxAmount          Decimal            @default(0)
+  totalWithTax       Decimal
+  currency           String             @default("SAR")
+  paymentMethod      String             @default("WALLET")
+  paymentStatus      PaymentStatus      @default(PENDING)
+  paidAt             DateTime?
+  deliveredAt        DateTime?
+  cancelledAt        DateTime?
+  cancellationReason String?
+  notes              String?
+  ipAddress          String?
+  userAgent          String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  cards              CardInventory[]
+  items              CardOrderItem[]
+  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user               User               @relation("CardOrders", fields: [userId], references: [id])
+  transaction        WalletTransaction? @relation("OrderTransaction")
+
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("card_orders")
+}
+
+model CardOrderItem {
+  id             String         @id @default(cuid())
+  orderId        String
+  productId      String
+  quantity       Int
+  unitPrice      Decimal
+  totalPrice     Decimal
+  taxAmount      Decimal        @default(0)
+  totalWithTax   Decimal
+  deliveredCount Int            @default(0)
+  deliveries     CardDelivery[]
+  order          CardOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product        CardProduct    @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("card_order_items")
+}
+
+model CardDelivery {
+  id           String        @id @default(cuid())
+  orderItemId  String
+  cardCode     String
+  cardPin      String?
+  deliveredAt  DateTime      @default(now())
+  viewedAt     DateTime?
+  downloadedAt DateTime?
+  orderItem    CardOrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@index([orderItemId])
+  @@map("card_deliveries")
+}
+
+model Wallet {
+  id           String              @id @default(cuid())
+  tenantId     String
+  userId       String              @unique
+  balance      Decimal             @default(0)
+  currency     String              @default("SAR")
+  isActive     Boolean             @default(true)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  transactions WalletTransaction[]
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([userId])
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id             String                @id @default(cuid())
+  walletId       String
+  type           WalletTransactionType
+  amount         Decimal
+  balanceBefore  Decimal
+  balanceAfter   Decimal
+  currency       String                @default("SAR")
+  description    String?
+  descriptionAr  String?
+  reference      String?
+  status         TransactionStatus     @default(COMPLETED)
+  orderId        String?               @unique
+  topUpRequestId String?               @unique
+  createdAt      DateTime              @default(now())
+  order          CardOrder?            @relation("OrderTransaction", fields: [orderId], references: [id])
+  topUpRequest   WalletTopUpRequest?   @relation("TopUpTransaction", fields: [topUpRequestId], references: [id])
+  wallet         Wallet                @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("wallet_transactions")
+}
+
+model WalletTopUpRequest {
+  id                String             @id @default(cuid())
+  tenantId          String
+  userId            String
+  amount            Decimal
+  currency          String             @default("SAR")
+  paymentMethod     TopUpPaymentMethod
+  bankId            String?
+  senderAccountId   String?
+  senderName        String?
+  transferReference String?
+  receiptImage      String?
+  notes             String?
+  status            TopUpStatus        @default(PENDING)
+  processedAt       DateTime?
+  processedByUserId String?
+  rejectionReason   String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  bank              Bank?              @relation(fields: [bankId], references: [id])
+  processedBy       User?              @relation("ProcessedTopUps", fields: [processedByUserId], references: [id])
+  senderAccount     BankAccount?       @relation(fields: [senderAccountId], references: [id])
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user              User               @relation("TopUpRequests", fields: [userId], references: [id])
+  transaction       WalletTransaction? @relation("TopUpTransaction")
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("wallet_topup_requests")
+}
+
+model Bank {
+  id             String               @id @default(cuid())
+  tenantId       String
+  name           String
+  nameAr         String?
+  code           String
+  logo           String?
+  accountName    String
+  accountNumber  String
+  iban           String
+  swiftCode      String?
+  isActive       Boolean              @default(true)
+  sortOrder      Int                  @default(0)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  tenant         Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  paymentIntents PaymentIntent[]
+  topUpRequests  WalletTopUpRequest[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([isActive])
+  @@map("banks")
+}
+
+model BankAccount {
+  id            String               @id @default(cuid())
+  userId        String
+  bankName      String
+  bankCode      String?
+  accountName   String
+  accountNumber String
+  iban          String?
+  isDefault     Boolean              @default(false)
+  isVerified    Boolean              @default(false)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  user          User                 @relation("BankAccounts", fields: [userId], references: [id], onDelete: Cascade)
+  topUpRequests WalletTopUpRequest[]
+
+  @@index([userId])
+  @@map("bank_accounts")
+}
+
+model MerchantFavorite {
+  id        String      @id @default(cuid())
+  userId    String
+  productId String
+  addedAt   DateTime    @default(now())
+  product   CardProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User        @relation("Favorites", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@map("merchant_favorites")
+}
+
+model SupportTicket {
+  id           String         @id @default(cuid())
+  tenantId     String
+  userId       String
+  ticketNumber String
+  title        String
+  description  String
+  orderId      String?
+  status       TicketStatus   @default(OPEN)
+  priority     TicketPriority @default(MEDIUM)
+  assignedToId String?
+  resolvedAt   DateTime?
+  closedAt     DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  assignedTo   User?          @relation("AssignedTickets", fields: [assignedToId], references: [id])
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User           @relation("SupportTickets", fields: [userId], references: [id])
+  replies      TicketReply[]
+
+  @@unique([tenantId, ticketNumber])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([status])
+  @@map("support_tickets")
+}
+
+model TicketReply {
+  id           String        @id @default(cuid())
+  ticketId     String
+  userId       String
+  message      String
+  isStaffReply Boolean       @default(false)
+  attachments  String[]
+  createdAt    DateTime      @default(now())
+  ticket       SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user         User          @relation("TicketReplies", fields: [userId], references: [id])
+
+  @@index([ticketId])
+  @@map("ticket_replies")
+}
+
+model CardBatch {
+  id           String   @id @default(cuid())
+  tenantId     String
+  productId    String
+  batchNumber  String
+  fileName     String
+  totalCards   Int
+  validCards   Int
+  invalidCards Int
+  importedAt   DateTime @default(now())
+  importedById String
+  notes        String?
+  importedBy   User     @relation("ImportedBatches", fields: [importedById], references: [id])
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([productId])
+  @@map("card_batches")
+}
+
+model Merchant {
+  id                    String                      @id @default(cuid())
+  tenantId              String
+  userId                String                      @unique
+  status                MerchantStatus              @default(ACTIVE)
+  businessName          String
+  businessNameAr        String?
+  phone                 String?
+  email                 String?
+  countryCode           String                      @default("SA")
+  defaultCurrency       String                      @default("SAR")
+  timezone              String                      @default("Asia/Riyadh")
+  settings              Json?
+  lowBalanceThreshold   Decimal                     @default(100)
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+  employees             Employee[]
+  invoices              Invoice[]
+  merchantAuditLogs     MerchantAuditLog[]
+  merchantCarts         MerchantCart[]
+  merchantFavorites     MerchantFavoriteV2[]
+  merchantNotifications MerchantNotification[]
+  merchantOrders        MerchantOrder[]
+  promotionProgress     MerchantPromotionProgress[]
+  merchantSessions      MerchantSession[]
+  tenant                Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user                  User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  players               Player[]
+  priceAlerts           PriceAlertSubscription[]
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([status])
+  @@map("merchants")
+}
+
+model Employee {
+  id           String             @id @default(cuid())
+  merchantId   String
+  userId       String?            @unique
+  name         String
+  username     String
+  passwordHash String?
+  phone        String?
+  status       EmployeeStatus     @default(ACTIVE)
+  permissions  Json
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  merchant     Merchant           @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  user         User?              @relation(fields: [userId], references: [id])
+  auditLogs    MerchantAuditLog[] @relation("EmployeeAuditLogs")
+  carts        MerchantCart[]
+  orders       MerchantOrder[]
+  sessions     MerchantSession[]
+
+  @@unique([merchantId, username])
+  @@index([merchantId])
+  @@index([status])
+  @@map("employees")
+}
+
+model Player {
+  id           String               @id @default(cuid())
+  merchantId   String
+  name         String
+  phone        String?
+  notes        String?
+  isFavorite   Boolean              @default(false)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  favorites    MerchantFavoriteV2[]
+  orders       MerchantOrder[]
+  gameAccounts PlayerGameAccount[]
+  merchant     Merchant             @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId])
+  @@index([merchantId, name])
+  @@index([merchantId, phone])
+  @@map("players")
+}
+
+model PlayerGameAccount {
+  id                String   @id @default(cuid())
+  playerId          String
+  gameKey           String
+  accountIdentifier String
+  label             String?
+  createdAt         DateTime @default(now())
+  player            Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, gameKey, accountIdentifier])
+  @@index([playerId])
+  @@map("player_game_accounts")
+}
+
+model MerchantCart {
+  id         String             @id @default(cuid())
+  merchantId String
+  employeeId String?
+  currency   String             @default("SAR")
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  items      MerchantCartItem[]
+  employee   Employee?          @relation(fields: [employeeId], references: [id])
+  merchant   Merchant           @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, employeeId])
+  @@index([merchantId])
+  @@map("merchant_carts")
+}
+
+model MerchantCartItem {
+  id                String       @id @default(cuid())
+  cartId            String
+  productId         String
+  quantity          Int          @default(1)
+  unitPriceSnapshot Decimal?
+  metadata          Json?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  cart              MerchantCart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product           CardProduct  @relation(fields: [productId], references: [id])
+
+  @@unique([cartId, productId])
+  @@index([cartId])
+  @@map("merchant_cart_items")
+}
+
+model MerchantOrder {
+  id              String                @id @default(cuid())
+  merchantId      String
+  employeeId      String?
+  playerId        String?
+  orderNumber     String
+  source          OrderSource           @default(CART)
+  originalOrderId String?
+  status          MerchantOrderStatus   @default(PENDING)
+  paymentMethod   PaymentMethod2        @default(WALLET)
+  paymentStatus   MerchantPaymentStatus @default(UNPAID)
+  currency        String                @default("SAR")
+  subtotal        Decimal               @default(0)
+  discountTotal   Decimal               @default(0)
+  feesTotal       Decimal               @default(0)
+  taxTotal        Decimal               @default(0)
+  total           Decimal               @default(0)
+  profitTotal     Decimal               @default(0)
+  idempotencyKey  String?
+  clientReference String?
+  notes           String?
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  submittedAt     DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  invoice         Invoice?
+  events          MerchantOrderEvent[]
+  items           MerchantOrderItem[]
+  employee        Employee?             @relation(fields: [employeeId], references: [id])
+  merchant        Merchant              @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  originalOrder   MerchantOrder?        @relation("ReorderRef", fields: [originalOrderId], references: [id])
+  reorders        MerchantOrder[]       @relation("ReorderRef")
+  player          Player?               @relation(fields: [playerId], references: [id])
+  paymentIntents  PaymentIntent[]
+
+  @@unique([merchantId, orderNumber])
+  @@unique([merchantId, idempotencyKey])
+  @@index([merchantId, createdAt])
+  @@index([merchantId, status])
+  @@index([merchantId, playerId])
+  @@index([originalOrderId])
+  @@map("merchant_orders")
+}
+
+model MerchantOrderItem {
+  id                    String                  @id @default(cuid())
+  orderId               String
+  productId             String
+  productNameSnapshotEn String
+  productNameSnapshotAr String?
+  quantity              Int
+  unitPrice             Decimal
+  unitCost              Decimal
+  lineSubtotal          Decimal
+  lineDiscount          Decimal                 @default(0)
+  lineTotal             Decimal
+  lineProfit            Decimal                 @default(0)
+  metadata              Json?
+  deliveries            MerchantOrderDelivery[]
+  order                 MerchantOrder           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product               CardProduct             @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("merchant_order_items")
+}
+
+model MerchantOrderDelivery {
+  id           String            @id @default(cuid())
+  orderItemId  String
+  cardCode     String
+  cardPin      String?
+  deliveredAt  DateTime          @default(now())
+  viewedAt     DateTime?
+  downloadedAt DateTime?
+  orderItem    MerchantOrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@index([orderItemId])
+  @@map("merchant_order_deliveries")
+}
+
+model MerchantOrderEvent {
+  id          String         @id @default(cuid())
+  orderId     String
+  type        OrderEventType
+  fromStatus  String?
+  toStatus    String?
+  message     String?
+  actorType   ActorType
+  actorUserId String?
+  createdAt   DateTime       @default(now())
+  order       MerchantOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@map("merchant_order_events")
+}
+
+model PaymentIntent {
+  id                    String              @id @default(cuid())
+  merchantId            String
+  orderId               String
+  method                PaymentIntentMethod
+  status                PaymentIntentStatus @default(REQUIRES_ACTION)
+  amount                Decimal
+  currency              String              @default("SAR")
+  bankAccountId         String?
+  proofAttachmentUrl    String?
+  reviewedByAdminUserId String?
+  reviewNote            String?
+  expiresAt             DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  bankAccount           Bank?               @relation(fields: [bankAccountId], references: [id])
+  order                 MerchantOrder       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([status, createdAt])
+  @@map("payment_intents")
+}
+
+model Invoice {
+  id               String        @id @default(cuid())
+  merchantId       String
+  orderId          String        @unique
+  invoiceNumber    String
+  status           InvoiceStatus @default(ISSUED)
+  currency         String        @default("SAR")
+  issuedAt         DateTime      @default(now())
+  merchantSnapshot Json
+  buyerSnapshot    Json?
+  itemsSnapshot    Json
+  totalsSnapshot   Json
+  paymentSnapshot  Json?
+  createdAt        DateTime      @default(now())
+  merchant         Merchant      @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  order            MerchantOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, invoiceNumber])
+  @@index([merchantId, issuedAt])
+  @@map("invoices")
+}
+
+model Promotion {
+  id            String                      @id @default(cuid())
+  tenantId      String
+  titleEn       String
+  titleAr       String?
+  descriptionEn String?
+  descriptionAr String?
+  type          PromotionType
+  status        PromotionStatus             @default(DRAFT)
+  startAt       DateTime
+  endAt         DateTime
+  conditions    Json
+  benefit       Json
+  imageUrl      String?
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @updatedAt
+  progress      MerchantPromotionProgress[]
+  tenant        Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([status, startAt, endAt])
+  @@map("promotions")
+}
+
+model MerchantPromotionProgress {
+  id            String    @id @default(cuid())
+  merchantId    String
+  promotionId   String
+  progress      Json
+  isCompleted   Boolean   @default(false)
+  completedAt   DateTime?
+  rewardClaimed Boolean   @default(false)
+  updatedAt     DateTime  @updatedAt
+  merchant      Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  promotion     Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, promotionId])
+  @@index([promotionId])
+  @@map("merchant_promotion_progress")
+}
+
+model PriceAlertSubscription {
+  id                String         @id @default(cuid())
+  merchantId        String
+  productId         String
+  alertType         PriceAlertType
+  isActive          Boolean        @default(true)
+  lastNotifiedAt    DateTime?
+  lastNotifiedPrice Decimal?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  merchant          Merchant       @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  product           CardProduct    @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, productId, alertType])
+  @@index([productId, isActive])
+  @@map("price_alert_subscriptions")
+}
+
+model ProductPriceHistory {
+  id              String      @id @default(cuid())
+  productId       String
+  currency        String      @default("SAR")
+  oldPrice        Decimal
+  newPrice        Decimal
+  changedAt       DateTime    @default(now())
+  changedByUserId String?
+  reason          String?
+  product         CardProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, changedAt])
+  @@map("product_price_history")
+}
+
+model MerchantNotification {
+  id         String                   @id @default(cuid())
+  merchantId String
+  type       MerchantNotificationType
+  titleEn    String
+  titleAr    String?
+  bodyEn     String
+  bodyAr     String?
+  data       Json?
+  readAt     DateTime?
+  createdAt  DateTime                 @default(now())
+  merchant   Merchant                 @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, createdAt])
+  @@index([merchantId, readAt])
+  @@map("merchant_notifications")
+}
+
+model MerchantFavoriteV2 {
+  id         String       @id @default(cuid())
+  merchantId String
+  type       FavoriteType
+  productId  String?
+  playerId   String?
+  createdAt  DateTime     @default(now())
+  merchant   Merchant     @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  player     Player?      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  product    CardProduct? @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, type, productId])
+  @@unique([merchantId, type, playerId])
+  @@index([merchantId, type])
+  @@map("merchant_favorites_v2")
+}
+
+model MerchantAuditLog {
+  id              String    @id @default(cuid())
+  merchantId      String
+  actorUserId     String?
+  actorEmployeeId String?
+  actorType       ActorType
+  action          String
+  entityType      String?
+  entityId        String?
+  ipAddress       String?
+  userAgent       String?
+  metadata        Json?
+  createdAt       DateTime  @default(now())
+  employee        Employee? @relation("EmployeeAuditLogs", fields: [actorEmployeeId], references: [id])
+  merchant        Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+  @@map("merchant_audit_logs")
+}
+
+model MerchantSession {
+  id               String    @id @default(cuid())
+  merchantId       String
+  employeeId       String?
+  userId           String
+  refreshTokenHash String?   @db.VarChar(512)
+  deviceId         String?
+  deviceName       String?
+  platform         String?
+  ipAddress        String?
+  userAgent        String?
+  isTrusted        Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  lastSeenAt       DateTime  @default(now())
+  revokedAt        DateTime?
+  employee         Employee? @relation(fields: [employeeId], references: [id])
+  merchant         Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, revokedAt])
+  @@index([userId, createdAt])
+  @@map("merchant_sessions")
+}
+
+model MerchantProductOverride {
+  id          String      @id @default(cuid())
+  merchantId  String
+  productId   String
+  isEnabled   Boolean     @default(true)
+  customPrice Decimal?
+  customCost  Decimal?
+  updatedAt   DateTime    @updatedAt
+  product     CardProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, productId])
+  @@index([merchantId])
+  @@map("merchant_product_overrides")
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  name       String
+  apiKey     String
+  apiKeyHash String
+  tenantId   String
+  isActive   Boolean   @default(true)
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([apiKey])
+  @@map("api_keys")
 }
 
 enum TransactionStatus {
@@ -806,117 +1972,6 @@ enum IntegrationType {
   SUPPLIER
 }
 
-// Feature Flags - Control features per tenant or globally
-model FeatureFlag {
-  id        String   @id @default(cuid())
-  tenantId  String?
-  feature   String // e.g., "chat", "ai_assistant", "page_builder"
-  enabled   Boolean  @default(true)
-  config    Json? // Feature-specific configuration
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, feature])
-  @@index([feature])
-  @@map("feature_flags")
-}
-
-// Payment Plans - Installment payment configurations
-model PaymentPlan {
-  id             String   @id @default(cuid())
-  name           String
-  nameAr         String?
-  description    String?
-  installments   Int // Number of installments
-  interestRate   Decimal  @default(0) // Interest rate percentage
-  minAmount      Decimal? // Minimum order amount
-  maxAmount      Decimal? // Maximum order amount
-  isActive       Boolean  @default(true)
-  allowedTenants String[] // Empty = all tenants
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  @@map("payment_plans")
-}
-
-// Platform Configuration - Global platform settings
-model PlatformConfig {
-  id          String   @id @default(cuid())
-  key         String   @unique
-  value       Json
-  description String?
-  category    String // e.g., "payment", "features", "limits"
-  isEditable  Boolean  @default(true)
-  updatedAt   DateTime @updatedAt
-  updatedBy   String?
-
-  @@index([category])
-  @@map("platform_configs")
-}
-
-// Platform Features - Global feature definitions and plan requirements
-model PlatformFeature {
-  id            String   @id @default(cuid())
-  feature       String   @unique // key
-  displayName   String
-  displayNameAr String?
-  description   String?
-  category      String
-  requiredPlan  PlanType @default(STARTER)
-  isGlobal      Boolean  @default(true)
-  isEnabled     Boolean  @default(true)
-  config        Json?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@map("platform_features")
-}
-
-// User Gifts - Gifts and rewards for users/tenants
-model UserGift {
-  id          String     @id @default(cuid())
-  userId      String?
-  tenantId    String?
-  giftType    GiftType
-  giftValue   String
-  giftDetails Json?
-  status      GiftStatus @default(ACTIVE)
-  expiresAt   DateTime?
-  grantedBy   String
-  grantedAt   DateTime   @default(now())
-  message     String?
-
-  user   User?   @relation(fields: [userId], references: [id])
-  tenant Tenant? @relation(fields: [tenantId], references: [id])
-
-  @@map("user_gifts")
-}
-
-// Subscription Plans - Plan configurations
-model SubscriptionPlan {
-  id            String   @id @default(cuid())
-  code          String   @unique // e.g. STARTER, PROFESSIONAL
-  name          String
-  nameAr        String?
-  description   String?
-  descriptionAr String?
-  price         Decimal
-  currency      String   @default("SAR")
-  billingCycle  String   @default("MONTHLY") // MONTHLY, YEARLY
-  features      String[]
-  featuresAr    String[]
-  limits        Json? // { products: 100, staff: 2 }
-  isActive      Boolean  @default(true)
-  isPopular     Boolean  @default(false)
-  sortOrder     Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@map("subscription_plans")
-}
-
 enum GiftType {
   PLAN_UPGRADE
   FEATURE_ACCESS
@@ -930,274 +1985,6 @@ enum GiftStatus {
   EXPIRED
   REVOKED
   USED
-}
-
-// Integrations - Third-party service integrations
-model Integration {
-  id          String          @id @default(cuid())
-  tenantId    String?
-  name        String
-  type        IntegrationType
-  provider    String // e.g., "google_analytics", "mailchimp", "twilio"
-  credentials Json // Encrypted credentials
-  settings    Json?
-  isActive    Boolean         @default(true)
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-
-  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, type])
-  @@map("integrations")
-}
-
-// Partner - Business partners with commission structure
-model Partner {
-  id              String         @id @default(cuid())
-  name            String
-  nameAr          String?
-  email           String         @unique
-  phone           String?
-  logo            String?        // Partner logo URL
-  description     String?        @db.Text // Partner description
-  descriptionAr   String?        @db.Text // Partner description in Arabic
-  website         String?        // Partner website URL
-  commissionType  CommissionType @default(PERCENTAGE)
-  commissionValue Decimal
-  isActive        Boolean        @default(true)
-  allowedFeatures String[]
-  settings        Json?
-  aiScript        String?        @db.Text // Custom AI training script/context
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-
-  @@map("partners")
-}
-
-// Audit Log - Track all master dashboard actions
-model AuditLog {
-  id         String   @id @default(cuid())
-  userId     String
-  userRole   UserRole
-  action     String // e.g., "TENANT_CREATED", "GATEWAY_ENABLED"
-  resource   String // e.g., "Tenant", "PaymentGateway"
-  resourceId String?
-  changes    Json? // Before/after values
-  ipAddress  String?
-  userAgent  String?
-  createdAt  DateTime @default(now())
-
-  @@index([userId, createdAt])
-  @@index([action, createdAt])
-  @@map("audit_logs")
-}
-
-// Supplier - For managing suppliers with discount rates
-model Supplier {
-  id                 String            @id @default(cuid())
-  tenantId           String
-  name               String
-  nameAr             String?
-  email              String?
-  phone              String?
-  contactPerson      String?
-  address            String?
-  discountRate       Decimal           @default(0) // Discount percentage
-  isActive           Boolean           @default(true)
-  notes              String?
-  // API Configuration
-  apiEndpoint        String?           // Supplier API endpoint URL
-  apiKey             String?            // API authentication key (encrypted)
-  apiConfig          Json?             // Additional API configuration (headers, auth type, etc.)
-  autoPurchaseEnabled Boolean          @default(false) // Enable auto-purchase from this supplier
-  priceCheckInterval  Int?              // Price check interval in minutes (default: 60)
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
-  tenant             Tenant            @relation(fields: [tenantId], references: [id])
-  products           ProductSupplier[]
-  supplierPurchases  SupplierPurchase[]
-
-  @@index([tenantId])
-  @@index([isActive])
-  @@map("suppliers")
-}
-
-// Brand - For managing product brands
-model Brand {
-  id                         String        @id @default(cuid())
-  tenantId                   String
-  name                       String
-  nameAr                     String?
-  code                       String?       // Brand code
-  shortName                  String?
-  brandType                  String?       // Brand type/category
-  logo                       String?       // Brand logo URL
-  image                      String?       // Brand banner image
-  status                     String        @default("Active") // Active, Inactive
-  rechargeUsdValue           Decimal?      @default(0)
-  usdValueForCoins           Decimal?      @default(0)
-  safetyStock                Decimal?      @default(0)
-  leadTime                   Int?          @default(0) // Days
-  reorderPoint               Decimal?      @default(0)
-  averageConsumptionPerMonth Decimal?      @default(0)
-  averageConsumptionPerDay   Decimal?      @default(0)
-  abcAnalysis                String?       // A, B, C - High/Medium/Low Value
-  odooCategoryId             String?       // Odoo integration ID
-  sortOrder                  Int           @default(0) // Display order
-  createdAt                  DateTime      @default(now())
-  updatedAt                  DateTime      @updatedAt
-  tenant                     Tenant        @relation(fields: [tenantId], references: [id])
-  products                   Product[]
-  cardProducts               CardProduct[] @relation("CardProductBrand")
-
-  @@unique([tenantId, code])
-  @@index([tenantId])
-  @@index([code])
-  @@map("brands")
-}
-
-// ProductSupplier - Many-to-many relationship between Product and Supplier
-model ProductSupplier {
-  id           String   @id @default(cuid())
-  productId    String
-  supplierId   String
-  discountRate Decimal  @default(0) // Product-specific discount from this supplier
-  isPrimary    Boolean  @default(false) // Primary supplier for this product
-  supplierProductCode String? // Product code/ID in supplier's system
-  lastPrice    Decimal? // Last fetched price from supplier
-  lastPriceCheck DateTime? // When price was last checked
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  supplier     Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-
-  @@unique([productId, supplierId])
-  @@index([productId])
-  @@index([supplierId])
-  @@map("product_suppliers")
-}
-
-// SupplierPurchase - Track purchases from suppliers and price changes
-model SupplierPurchase {
-  id              String   @id @default(cuid())
-  tenantId        String
-  productId       String
-  supplierId      String
-  quantity        Int      @default(1)
-  unitPrice       Decimal  // Price per unit when purchased
-  totalAmount     Decimal  // Total purchase amount
-  status          String   @default("PENDING") // PENDING, COMPLETED, CANCELLED, REFUNDED
-  purchaseDate    DateTime @default(now())
-  cancelledAt     DateTime?
-  refundedAt      DateTime?
-  refundAmount    Decimal?
-  reason          String?  // Reason for cancellation/refund
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  supplier        Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId])
-  @@index([productId])
-  @@index([supplierId])
-  @@index([status])
-  @@map("supplier_purchases")
-}
-
-// Currency - Available currencies
-model Currency {
-  id           String   @id @default(cuid())
-  tenantId     String
-  code         String // ISO currency code (USD, SAR, EUR, etc.)
-  name         String
-  nameAr       String?
-  symbol       String // $, SAR, €, etc.
-  symbolAr     String? // Arabic symbol (ر.س, د.إ, etc.)
-  exchangeRate Decimal  @default(1) // Exchange rate to base currency
-  precision    Int      @default(2) // Decimal places for currency amounts
-  isActive     Boolean  @default(true)
-  isDefault    Boolean  @default(false) // Is this the default currency for the tenant
-  sortOrder    Int      @default(0) // Display order
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  tenant       Tenant   @relation(fields: [tenantId], references: [id])
-
-  @@unique([tenantId, code])
-  @@index([tenantId])
-  @@index([isActive])
-  @@index([isDefault])
-  @@map("currencies")
-}
-
-// CurrencySettings - Tenant currency configuration
-model CurrencySettings {
-  id              String    @id @default(cuid())
-  tenantId        String    @unique
-  baseCurrency    String    @default("SAR") // Base currency code
-  autoUpdateRates Boolean   @default(false)
-  lastUpdated     DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  tenant          Tenant    @relation(fields: [tenantId], references: [id])
-
-  @@map("currency_settings")
-}
-
-// Unit - Product units with costs
-model Unit {
-  id          String    @id @default(cuid())
-  tenantId    String
-  name        String
-  nameAr      String?
-  code        String // Unit code (e.g., "KG", "L", "PCS")
-  symbol      String? // Unit symbol (e.g., "kg", "l", "pcs")
-  cost        Decimal   @default(0) // Cost in base currency
-  description String?
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  tenant      Tenant    @relation(fields: [tenantId], references: [id])
-  products    Product[]
-
-  @@unique([tenantId, code])
-  @@index([tenantId])
-  @@index([isActive])
-  @@map("units")
-}
-
-model SecurityEvent {
-  id          String            @id @default(cuid())
-  type        SecurityEventType
-  severity    SecuritySeverity
-  userId      String?
-  tenantId    String?
-  ipAddress   String?
-  userAgent   String?
-  description String
-  metadata    Json? // Changed from String to Json for easier access in core
-  // Geolocation fields
-  country     String?
-  countryCode String?
-  city        String?
-  region      String?
-  latitude    Float?
-  longitude   Float?
-  isp         String?
-  isVpn       Boolean           @default(false)
-  isProxy     Boolean           @default(false)
-  // Device info fields
-  os          String?
-  browser     String?
-  device      String?
-  createdAt   DateTime          @default(now())
-  tenant      Tenant?           @relation(fields: [tenantId], references: [id])
-  user        User?             @relation(fields: [userId], references: [id])
-
-  @@index([type, severity])
-  @@index([createdAt])
-  @@index([tenantId])
-  @@index([userId])
-  @@map("security_events")
 }
 
 enum SecurityEventType {
@@ -1226,272 +2013,33 @@ enum SecuritySeverity {
   CRITICAL
 }
 
-// ==========================================
-// DIGITAL CARDS MARKETPLACE MODELS
-// ==========================================
-
-// CardProduct - Digital card products (e.g., "Netflix 100 SAR", "PUBG UC 1000")
-model CardProduct {
-  id                String              @id @default(cuid())
-  tenantId          String
-  brandId           String?             // Reference to Brand
-  categoryId        String?             // Reference to category
-  name              String              // Product name
-  nameAr            String?             // Arabic name
-  description       String?             @db.Text
-  descriptionAr     String?             @db.Text
-  image             String?             // Product image URL
-  productCode       String?             // External supplier product code
-  denomination      Decimal             // Face value (100, 200, etc.)
-  currency          String              @default("SAR") // Currency of denomination
-  wholesalePrice    Decimal             // Price merchants pay
-  retailPrice       Decimal             // Suggested retail price
-  profitMargin      Decimal             @default(0) // Profit percentage
-  taxRate           Decimal             @default(0.15) // Tax rate (15% VAT)
-  isActive          Boolean             @default(true)
-  isAvailable       Boolean             @default(true) // Has stock?
-  stockCount        Int                 @default(0) // Current stock count
-  minQuantity       Int                 @default(1) // Minimum order quantity
-  maxQuantity       Int                 @default(100) // Maximum order quantity
-  sortOrder         Int                 @default(0)
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  
-  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  brand             Brand?              @relation("CardProductBrand", fields: [brandId], references: [id])
-  category          Category?           @relation("CardProductCategory", fields: [categoryId], references: [id])
-  inventory         CardInventory[]
-  orderItems        CardOrderItem[]
-  favorites         MerchantFavorite[]
-  // Merchant Dealer App relations
-  merchantCartItems     MerchantCartItem[]
-  merchantOrderItems    MerchantOrderItem[]
-  priceAlerts           PriceAlertSubscription[]
-  priceHistory          ProductPriceHistory[]
-  merchantFavoritesV2   MerchantFavoriteV2[]
-  merchantOverrides     MerchantProductOverride[]
-
-  @@unique([tenantId, productCode])
-  @@index([tenantId])
-  @@index([brandId])
-  @@index([categoryId])
-  @@index([isActive, isAvailable])
-  @@map("card_products")
-}
-
-// CardInventory - Individual card codes in stock (imported from Excel)
-model CardInventory {
-  id              String              @id @default(cuid())
-  tenantId        String
-  productId       String              // Reference to CardProduct
-  cardCode        String              // The actual card code/serial
-  cardPin         String?             // PIN if applicable
-  expiryDate      DateTime?           // Expiry date of the card
-  batchId         String?             // Batch/import reference
-  importedAt      DateTime            @default(now())
-  status          CardStatus          @default(AVAILABLE)
-  soldAt          DateTime?           // When it was sold
-  soldToUserId    String?             // Who bought it
-  orderId         String?             // Which order it was sold in
-  
-  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  product         CardProduct         @relation(fields: [productId], references: [id], onDelete: Cascade)
-  soldToUser      User?               @relation("CardsSold", fields: [soldToUserId], references: [id])
-  order           CardOrder?          @relation(fields: [orderId], references: [id])
-
-  @@unique([tenantId, cardCode]) // Each card code is unique per tenant
-  @@index([tenantId])
-  @@index([productId])
-  @@index([status])
-  @@index([batchId])
-  @@map("card_inventory")
-}
-
 enum CardStatus {
-  AVAILABLE     // Ready to sell
-  RESERVED      // Reserved during checkout
-  SOLD          // Sold and delivered
-  EXPIRED       // Expired card
-  INVALID       // Invalid/defective card
-  REFUNDED      // Refunded back to inventory
-}
-
-// CardOrder - Orders placed by merchants
-model CardOrder {
-  id                  String              @id @default(cuid())
-  tenantId            String
-  userId              String              // The merchant who placed the order
-  orderNumber         String              // Human-readable order number
-  status              CardOrderStatus     @default(PENDING)
-  totalAmount         Decimal             // Total before tax
-  taxAmount           Decimal             @default(0)
-  totalWithTax        Decimal             // Total after tax
-  currency            String              @default("SAR")
-  paymentMethod       String              @default("WALLET") // WALLET, VISA, etc.
-  paymentStatus       PaymentStatus       @default(PENDING)
-  paidAt              DateTime?
-  deliveredAt         DateTime?
-  cancelledAt         DateTime?
-  cancellationReason  String?
-  notes               String?
-  ipAddress           String?
-  userAgent           String?
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
-  
-  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user                User                @relation("CardOrders", fields: [userId], references: [id])
-  items               CardOrderItem[]
-  cards               CardInventory[]     // The actual cards delivered
-  transaction         WalletTransaction?  @relation("OrderTransaction")
-
-  @@unique([tenantId, orderNumber])
-  @@index([tenantId])
-  @@index([userId])
-  @@index([status])
-  @@index([createdAt])
-  @@map("card_orders")
+  AVAILABLE
+  RESERVED
+  SOLD
+  EXPIRED
+  INVALID
+  REFUNDED
 }
 
 enum CardOrderStatus {
-  PENDING           // Order created, awaiting payment
-  PAID              // Payment received
-  PROCESSING        // Preparing cards for delivery
-  DELIVERED         // Cards delivered to merchant
-  PARTIALLY_DELIVERED // Some cards delivered
-  CANCELLED         // Order cancelled
-  REFUNDED          // Order refunded
-  FAILED            // Order failed
-}
-
-// CardOrderItem - Items in each order
-model CardOrderItem {
-  id              String          @id @default(cuid())
-  orderId         String
-  productId       String
-  quantity        Int
-  unitPrice       Decimal         // Price per card at time of order
-  totalPrice      Decimal         // quantity * unitPrice
-  taxAmount       Decimal         @default(0)
-  totalWithTax    Decimal
-  deliveredCount  Int             @default(0) // How many have been delivered
-  
-  order           CardOrder       @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product         CardProduct     @relation(fields: [productId], references: [id])
-  deliveries      CardDelivery[]
-
-  @@index([orderId])
-  @@index([productId])
-  @@map("card_order_items")
-}
-
-// CardDelivery - Delivered card codes to merchants
-model CardDelivery {
-  id              String          @id @default(cuid())
-  orderItemId     String
-  cardCode        String          // The delivered card code
-  cardPin         String?         // PIN if applicable
-  deliveredAt     DateTime        @default(now())
-  viewedAt        DateTime?       // When merchant first viewed the code
-  downloadedAt    DateTime?       // When merchant downloaded
-  
-  orderItem       CardOrderItem   @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
-
-  @@index([orderItemId])
-  @@map("card_deliveries")
-}
-
-// Wallet - Wallet for each user/merchant
-model Wallet {
-  id              String              @id @default(cuid())
-  tenantId        String
-  userId          String              @unique
-  balance         Decimal             @default(0)
-  currency        String              @default("SAR")
-  isActive        Boolean             @default(true)
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  
-  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions    WalletTransaction[]
-
-  @@index([tenantId])
-  @@index([userId])
-  @@map("wallets")
-}
-
-// WalletTransaction - All wallet transactions
-model WalletTransaction {
-  id                  String                  @id @default(cuid())
-  walletId            String
-  type                WalletTransactionType
-  amount              Decimal
-  balanceBefore       Decimal
-  balanceAfter        Decimal
-  currency            String                  @default("SAR")
-  description         String?
-  descriptionAr       String?
-  reference           String?                 // External reference (order ID, topup ID)
-  status              TransactionStatus       @default(COMPLETED)
-  orderId             String?                 @unique // Link to card order
-  topUpRequestId      String?                 @unique // Link to top-up request
-  createdAt           DateTime                @default(now())
-  
-  wallet              Wallet                  @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  order               CardOrder?              @relation("OrderTransaction", fields: [orderId], references: [id])
-  topUpRequest        WalletTopUpRequest?     @relation("TopUpTransaction", fields: [topUpRequestId], references: [id])
-
-  @@index([walletId])
-  @@index([type])
-  @@index([createdAt])
-  @@map("wallet_transactions")
+  PENDING
+  PAID
+  PROCESSING
+  DELIVERED
+  PARTIALLY_DELIVERED
+  CANCELLED
+  REFUNDED
+  FAILED
 }
 
 enum WalletTransactionType {
-  TOPUP             // Wallet top-up
-  PURCHASE          // Card purchase (debit)
-  REFUND            // Refund from cancelled order
-  BONUS             // Bonus/reward credit
-  ADJUSTMENT        // Manual adjustment by admin
-  WITHDRAWAL        // Withdrawal request
-}
-
-// TransactionStatus already exists in the schema - reusing it
-
-// WalletTopUpRequest - Pending top-up requests
-model WalletTopUpRequest {
-  id                  String              @id @default(cuid())
-  tenantId            String
-  userId              String
-  amount              Decimal
-  currency            String              @default("SAR")
-  paymentMethod       TopUpPaymentMethod
-  bankId              String?             // Bank used for transfer
-  senderAccountId     String?             // Sender's bank account
-  senderName          String?             // Name of sender
-  transferReference   String?             // Bank transfer reference
-  receiptImage        String?             // Receipt image URL
-  notes               String?
-  status              TopUpStatus         @default(PENDING)
-  processedAt         DateTime?
-  processedByUserId   String?             // Admin who processed
-  rejectionReason     String?
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
-  
-  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user                User                @relation("TopUpRequests", fields: [userId], references: [id])
-  bank                Bank?               @relation(fields: [bankId], references: [id])
-  senderAccount       BankAccount?        @relation(fields: [senderAccountId], references: [id])
-  processedBy         User?               @relation("ProcessedTopUps", fields: [processedByUserId], references: [id])
-  transaction         WalletTransaction?  @relation("TopUpTransaction")
-
-  @@index([tenantId])
-  @@index([userId])
-  @@index([status])
-  @@index([createdAt])
-  @@map("wallet_topup_requests")
+  TOPUP
+  PURCHASE
+  REFUND
+  BONUS
+  ADJUSTMENT
+  WITHDRAWAL
 }
 
 enum TopUpPaymentMethod {
@@ -1504,118 +2052,10 @@ enum TopUpPaymentMethod {
 }
 
 enum TopUpStatus {
-  PENDING           // Awaiting verification
-  APPROVED          // Approved and credited
-  REJECTED          // Rejected by admin
-  CANCELLED         // Cancelled by user
-}
-
-// Bank - Banks for wallet top-ups
-model Bank {
-  id              String          @id @default(cuid())
-  tenantId        String
-  name            String          // Bank name (e.g., "Al Rajhi Bank")
-  nameAr          String?         // Arabic name (e.g., "مصرف الراجحي")
-  code            String          // Bank code (e.g., "RJHI")
-  logo            String?         // Bank logo URL
-  accountName     String          // Receiver account name
-  accountNumber   String          // Receiver account number
-  iban            String          // IBAN
-  swiftCode       String?         // SWIFT code
-  isActive        Boolean         @default(true)
-  sortOrder       Int             @default(0)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  
-  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  topUpRequests   WalletTopUpRequest[]
-  paymentIntents  PaymentIntent[]
-
-  @@unique([tenantId, code])
-  @@index([tenantId])
-  @@index([isActive])
-  @@map("banks")
-}
-
-// BankAccount - Merchant's bank accounts for transfers
-model BankAccount {
-  id              String          @id @default(cuid())
-  userId          String
-  bankName        String          // Name of the bank
-  bankCode        String?         // Bank code
-  accountName     String          // Account holder name
-  accountNumber   String
-  iban            String?
-  isDefault       Boolean         @default(false)
-  isVerified      Boolean         @default(false)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  
-  user            User            @relation("BankAccounts", fields: [userId], references: [id], onDelete: Cascade)
-  topUpRequests   WalletTopUpRequest[]
-
-  @@index([userId])
-  @@map("bank_accounts")
-}
-
-// MerchantFavorite - Favorite cards for quick access
-model MerchantFavorite {
-  id              String          @id @default(cuid())
-  userId          String
-  productId       String          // CardProduct reference
-  addedAt         DateTime        @default(now())
-  
-  user            User            @relation("Favorites", fields: [userId], references: [id], onDelete: Cascade)
-  product         CardProduct     @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, productId])
-  @@index([userId])
-  @@map("merchant_favorites")
-}
-
-// SupportTicket - Support tickets/complaints
-model SupportTicket {
-  id              String              @id @default(cuid())
-  tenantId        String
-  userId          String
-  ticketNumber    String              // Human-readable ticket number
-  title           String
-  description     String              @db.Text
-  orderId         String?             // Related order if any
-  status          TicketStatus        @default(OPEN)
-  priority        TicketPriority      @default(MEDIUM)
-  assignedToId    String?             // Assigned staff member
-  resolvedAt      DateTime?
-  closedAt        DateTime?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  
-  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user            User                @relation("SupportTickets", fields: [userId], references: [id])
-  assignedTo      User?               @relation("AssignedTickets", fields: [assignedToId], references: [id])
-  replies         TicketReply[]
-
-  @@unique([tenantId, ticketNumber])
-  @@index([tenantId])
-  @@index([userId])
-  @@index([status])
-  @@map("support_tickets")
-}
-
-model TicketReply {
-  id              String          @id @default(cuid())
-  ticketId        String
-  userId          String
-  message         String          @db.Text
-  isStaffReply    Boolean         @default(false)
-  attachments     String[]        // Array of attachment URLs
-  createdAt       DateTime        @default(now())
-  
-  ticket          SupportTicket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  user            User            @relation("TicketReplies", fields: [userId], references: [id])
-
-  @@index([ticketId])
-  @@map("ticket_replies")
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
 }
 
 enum TicketStatus {
@@ -1633,230 +2073,15 @@ enum TicketPriority {
   URGENT
 }
 
-// CardBatch - Track imported batches of cards
-model CardBatch {
-  id              String          @id @default(cuid())
-  tenantId        String
-  productId       String          // Which product these cards are for
-  batchNumber     String          // Batch identifier
-  fileName        String          // Original file name
-  totalCards      Int             // Total cards in batch
-  validCards      Int             // Successfully imported
-  invalidCards    Int             // Failed to import
-  importedAt      DateTime        @default(now())
-  importedById    String          // Who imported
-  notes           String?
-  
-  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  importedBy      User            @relation("ImportedBatches", fields: [importedById], references: [id])
-
-  @@index([tenantId])
-  @@index([productId])
-  @@map("card_batches")
-}
-
-// ==========================================
-// MERCHANT DEALER APP MODELS
-// ==========================================
-
-// Merchant - Primary tenant/account owner for dealer app
-model Merchant {
-  id                    String                @id @default(cuid())
-  tenantId              String
-  userId                String                @unique // Link to User account
-  status                MerchantStatus        @default(ACTIVE)
-  businessName          String
-  businessNameAr        String?
-  phone                 String?
-  email                 String?
-  countryCode           String                @default("SA")
-  defaultCurrency       String                @default("SAR")
-  timezone              String                @default("Asia/Riyadh")
-  settings              Json?                 // Merchant-specific settings
-  lowBalanceThreshold   Decimal               @default(100) // For low wallet alerts
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
-
-  tenant                Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user                  User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  employees             Employee[]
-  players               Player[]
-  merchantCarts         MerchantCart[]
-  merchantOrders        MerchantOrder[]
-  invoices              Invoice[]
-  merchantNotifications MerchantNotification[]
-  priceAlerts           PriceAlertSubscription[]
-  promotionProgress     MerchantPromotionProgress[]
-  merchantFavorites     MerchantFavoriteV2[]
-  merchantAuditLogs     MerchantAuditLog[]
-  merchantSessions      MerchantSession[]
-
-  @@unique([tenantId, userId])
-  @@index([tenantId])
-  @@index([status])
-  @@map("merchants")
-}
-
 enum MerchantStatus {
   ACTIVE
   SUSPENDED
   PENDING
 }
 
-// Employee - Sub-account under a merchant
-model Employee {
-  id              String          @id @default(cuid())
-  merchantId      String
-  userId          String?         @unique // Link to User if they have login
-  name            String
-  username        String          // Login username
-  passwordHash    String?         // For standalone employee login
-  phone           String?
-  status          EmployeeStatus  @default(ACTIVE)
-  permissions     Json            // Permission flags as JSONB
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-
-  merchant        Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  user            User?           @relation(fields: [userId], references: [id])
-  carts           MerchantCart[]
-  orders          MerchantOrder[]
-  auditLogs       MerchantAuditLog[] @relation("EmployeeAuditLogs")
-  sessions        MerchantSession[]
-
-  @@unique([merchantId, username])
-  @@index([merchantId])
-  @@index([status])
-  @@map("employees")
-}
-
 enum EmployeeStatus {
   ACTIVE
   DISABLED
-}
-
-// Player - Merchant-saved customer profile
-model Player {
-  id              String              @id @default(cuid())
-  merchantId      String
-  name            String
-  phone           String?
-  notes           String?             @db.Text
-  isFavorite      Boolean             @default(false)
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-
-  merchant        Merchant            @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  gameAccounts    PlayerGameAccount[]
-  orders          MerchantOrder[]
-  favorites       MerchantFavoriteV2[]
-
-  @@index([merchantId])
-  @@index([merchantId, name])
-  @@index([merchantId, phone])
-  @@map("players")
-}
-
-// PlayerGameAccount - Game accounts linked to a player
-model PlayerGameAccount {
-  id                  String          @id @default(cuid())
-  playerId            String
-  gameKey             String          // Game identifier (e.g., "pubg", "freefire")
-  accountIdentifier   String          // Game user ID/account
-  label               String?         // e.g., "Main account"
-  createdAt           DateTime        @default(now())
-
-  player              Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
-
-  @@unique([playerId, gameKey, accountIdentifier])
-  @@index([playerId])
-  @@map("player_game_accounts")
-}
-
-// MerchantCart - Server-side cart for merchant/employee
-model MerchantCart {
-  id              String              @id @default(cuid())
-  merchantId      String
-  employeeId      String?             // Optional employee scope
-  currency        String              @default("SAR")
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-
-  merchant        Merchant            @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  employee        Employee?           @relation(fields: [employeeId], references: [id])
-  items           MerchantCartItem[]
-
-  @@unique([merchantId, employeeId])
-  @@index([merchantId])
-  @@map("merchant_carts")
-}
-
-// MerchantCartItem - Items in merchant cart
-model MerchantCartItem {
-  id                  String          @id @default(cuid())
-  cartId              String
-  productId           String
-  quantity            Int             @default(1)
-  unitPriceSnapshot   Decimal?        // Optional snapshot at add time
-  metadata            Json?           // Player account info, etc.
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
-
-  cart                MerchantCart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  product             CardProduct     @relation(fields: [productId], references: [id])
-
-  @@unique([cartId, productId])
-  @@index([cartId])
-  @@map("merchant_cart_items")
-}
-
-// MerchantOrder - Orders placed by merchants
-model MerchantOrder {
-  id                  String              @id @default(cuid())
-  merchantId          String
-  employeeId          String?             // Who created the order
-  playerId            String?             // Optional player link
-  orderNumber         String              // Human-readable
-  source              OrderSource         @default(CART)
-  originalOrderId     String?             // For reorders
-  status              MerchantOrderStatus @default(PENDING)
-  paymentMethod       PaymentMethod2      @default(WALLET)
-  paymentStatus       MerchantPaymentStatus @default(UNPAID)
-  currency            String              @default("SAR")
-  subtotal            Decimal             @default(0)
-  discountTotal       Decimal             @default(0)
-  feesTotal           Decimal             @default(0)
-  taxTotal            Decimal             @default(0)
-  total               Decimal             @default(0)
-  profitTotal         Decimal             @default(0) // Computed profit snapshot
-  idempotencyKey      String?             // For deduplication
-  clientReference     String?             // Optional client ref
-  notes               String?             @db.Text
-  ipAddress           String?
-  userAgent           String?
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
-  submittedAt         DateTime?
-  completedAt         DateTime?
-  cancelledAt         DateTime?
-
-  merchant            Merchant            @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  employee            Employee?           @relation(fields: [employeeId], references: [id])
-  player              Player?             @relation(fields: [playerId], references: [id])
-  originalOrder       MerchantOrder?      @relation("ReorderRef", fields: [originalOrderId], references: [id])
-  reorders            MerchantOrder[]     @relation("ReorderRef")
-  items               MerchantOrderItem[]
-  events              MerchantOrderEvent[]
-  paymentIntents      PaymentIntent[]
-  invoice             Invoice?
-
-  @@unique([merchantId, orderNumber])
-  @@unique([merchantId, idempotencyKey])
-  @@index([merchantId, createdAt])
-  @@index([merchantId, status])
-  @@index([merchantId, playerId])
-  @@index([originalOrderId])
-  @@map("merchant_orders")
 }
 
 enum OrderSource {
@@ -1890,65 +2115,6 @@ enum MerchantPaymentStatus {
   PARTIALLY_REFUNDED
 }
 
-// MerchantOrderItem - Items in merchant order
-model MerchantOrderItem {
-  id                      String          @id @default(cuid())
-  orderId                 String
-  productId               String
-  productNameSnapshotEn   String
-  productNameSnapshotAr   String?
-  quantity                Int
-  unitPrice               Decimal
-  unitCost                Decimal
-  lineSubtotal            Decimal
-  lineDiscount            Decimal         @default(0)
-  lineTotal               Decimal
-  lineProfit              Decimal         @default(0)
-  metadata                Json?           // Game account id, etc.
-
-  order                   MerchantOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product                 CardProduct     @relation(fields: [productId], references: [id])
-  deliveries              MerchantOrderDelivery[]
-
-  @@index([orderId])
-  @@index([productId])
-  @@map("merchant_order_items")
-}
-
-// MerchantOrderDelivery - Delivered codes for merchant orders
-model MerchantOrderDelivery {
-  id              String              @id @default(cuid())
-  orderItemId     String
-  cardCode        String
-  cardPin         String?
-  deliveredAt     DateTime            @default(now())
-  viewedAt        DateTime?
-  downloadedAt    DateTime?
-
-  orderItem       MerchantOrderItem   @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
-
-  @@index([orderItemId])
-  @@map("merchant_order_deliveries")
-}
-
-// MerchantOrderEvent - Order status history/events
-model MerchantOrderEvent {
-  id              String              @id @default(cuid())
-  orderId         String
-  type            OrderEventType
-  fromStatus      String?
-  toStatus        String?
-  message         String?             @db.Text
-  actorType       ActorType
-  actorUserId     String?             // Reference to User id
-  createdAt       DateTime            @default(now())
-
-  order           MerchantOrder       @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  @@index([orderId, createdAt])
-  @@map("merchant_order_events")
-}
-
 enum OrderEventType {
   CREATED
   SUBMITTED
@@ -1965,31 +2131,6 @@ enum ActorType {
   ADMIN
 }
 
-// PaymentIntent - For bank transfer / external payments
-model PaymentIntent {
-  id                      String              @id @default(cuid())
-  merchantId              String
-  orderId                 String
-  method                  PaymentIntentMethod
-  status                  PaymentIntentStatus @default(REQUIRES_ACTION)
-  amount                  Decimal
-  currency                String              @default("SAR")
-  bankAccountId           String?             // Platform bank to transfer to
-  proofAttachmentUrl      String?
-  reviewedByAdminUserId   String?
-  reviewNote              String?             @db.Text
-  expiresAt               DateTime?
-  createdAt               DateTime            @default(now())
-  updatedAt               DateTime            @updatedAt
-
-  order                   MerchantOrder       @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  bankAccount             Bank?               @relation(fields: [bankAccountId], references: [id])
-
-  @@index([orderId])
-  @@index([status, createdAt])
-  @@map("payment_intents")
-}
-
 enum PaymentIntentMethod {
   BANK_TRANSFER
   GATEWAY
@@ -2004,60 +2145,10 @@ enum PaymentIntentStatus {
   EXPIRED
 }
 
-// Invoice - Structured invoice/receipt record
-model Invoice {
-  id                  String          @id @default(cuid())
-  merchantId          String
-  orderId             String          @unique
-  invoiceNumber       String          // Human-friendly number
-  status              InvoiceStatus   @default(ISSUED)
-  currency            String          @default("SAR")
-  issuedAt            DateTime        @default(now())
-  merchantSnapshot    Json            // Snapshot of merchant info
-  buyerSnapshot       Json?           // Snapshot of player info
-  itemsSnapshot       Json            // Snapshot of order items
-  totalsSnapshot      Json            // Subtotal/discount/fees/total
-  paymentSnapshot     Json?           // Payment method/status
-  createdAt           DateTime        @default(now())
-
-  merchant            Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  order               MerchantOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  @@unique([merchantId, invoiceNumber])
-  @@index([merchantId, issuedAt])
-  @@map("invoices")
-}
-
 enum InvoiceStatus {
   ISSUED
   VOIDED
   REFUNDED
-}
-
-// Promotion - Platform promotions for merchants
-model Promotion {
-  id              String              @id @default(cuid())
-  tenantId        String
-  titleEn         String
-  titleAr         String?
-  descriptionEn   String?             @db.Text
-  descriptionAr   String?             @db.Text
-  type            PromotionType
-  status          PromotionStatus     @default(DRAFT)
-  startAt         DateTime
-  endAt           DateTime
-  conditions      Json                // min_orders, product_ids, min_volume, etc.
-  benefit         Json                // discount %, cashback fixed, etc.
-  imageUrl        String?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-
-  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  progress        MerchantPromotionProgress[]
-
-  @@index([tenantId])
-  @@index([status, startAt, endAt])
-  @@map("promotions")
 }
 
 enum PromotionType {
@@ -2076,86 +2167,10 @@ enum PromotionStatus {
   DISABLED
 }
 
-// MerchantPromotionProgress - Track merchant progress on promotions
-model MerchantPromotionProgress {
-  id              String          @id @default(cuid())
-  merchantId      String
-  promotionId     String
-  progress        Json            // e.g., { orders_count: 73, volume: 5000 }
-  isCompleted     Boolean         @default(false)
-  completedAt     DateTime?
-  rewardClaimed   Boolean         @default(false)
-  updatedAt       DateTime        @updatedAt
-
-  merchant        Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  promotion       Promotion       @relation(fields: [promotionId], references: [id], onDelete: Cascade)
-
-  @@unique([merchantId, promotionId])
-  @@index([promotionId])
-  @@map("merchant_promotion_progress")
-}
-
-// PriceAlertSubscription - Price alert subscriptions for merchants
-model PriceAlertSubscription {
-  id              String          @id @default(cuid())
-  merchantId      String
-  productId       String
-  alertType       PriceAlertType
-  isActive        Boolean         @default(true)
-  lastNotifiedAt  DateTime?
-  lastNotifiedPrice Decimal?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-
-  merchant        Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  product         CardProduct     @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@unique([merchantId, productId, alertType])
-  @@index([productId, isActive])
-  @@map("price_alert_subscriptions")
-}
-
 enum PriceAlertType {
   ANY_CHANGE
   DROP_ONLY
   RISE_ONLY
-}
-
-// ProductPriceHistory - Track product price changes
-model ProductPriceHistory {
-  id              String          @id @default(cuid())
-  productId       String
-  currency        String          @default("SAR")
-  oldPrice        Decimal
-  newPrice        Decimal
-  changedAt       DateTime        @default(now())
-  changedByUserId String?
-  reason          String?
-
-  product         CardProduct     @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@index([productId, changedAt])
-  @@map("product_price_history")
-}
-
-// MerchantNotification - Notifications for merchants
-model MerchantNotification {
-  id              String                  @id @default(cuid())
-  merchantId      String
-  type            MerchantNotificationType
-  titleEn         String
-  titleAr         String?
-  bodyEn          String                  @db.Text
-  bodyAr          String?                 @db.Text
-  data            Json?                   // order_id, product_id, etc.
-  readAt          DateTime?
-  createdAt       DateTime                @default(now())
-
-  merchant        Merchant                @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-
-  @@index([merchantId, createdAt])
-  @@index([merchantId, readAt])
-  @@map("merchant_notifications")
 }
 
 enum MerchantNotificationType {
@@ -2167,111 +2182,7 @@ enum MerchantNotificationType {
   SYSTEM
 }
 
-// MerchantFavoriteV2 - Unified favorites for merchants (products and players)
-model MerchantFavoriteV2 {
-  id              String          @id @default(cuid())
-  merchantId      String
-  type            FavoriteType
-  productId       String?         // Reference when type = PRODUCT
-  playerId        String?         // Reference when type = PLAYER
-  createdAt       DateTime        @default(now())
-
-  merchant        Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  product         CardProduct?    @relation(fields: [productId], references: [id], onDelete: Cascade)
-  player          Player?         @relation(fields: [playerId], references: [id], onDelete: Cascade)
-
-  @@unique([merchantId, type, productId])
-  @@unique([merchantId, type, playerId])
-  @@index([merchantId, type])
-  @@map("merchant_favorites_v2")
-}
-
 enum FavoriteType {
   PRODUCT
   PLAYER
-}
-
-// MerchantAuditLog - Audit logs for merchant actions
-model MerchantAuditLog {
-  id              String          @id @default(cuid())
-  merchantId      String
-  actorUserId     String?         // User who performed action
-  actorEmployeeId String?         // Employee who performed action
-  actorType       ActorType
-  action          String          // e.g., "order.create", "report.view"
-  entityType      String?
-  entityId        String?
-  ipAddress       String?
-  userAgent       String?
-  metadata        Json?
-  createdAt       DateTime        @default(now())
-
-  merchant        Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  employee        Employee?       @relation("EmployeeAuditLogs", fields: [actorEmployeeId], references: [id])
-
-  @@index([merchantId, createdAt])
-  @@index([actorUserId, createdAt])
-  @@index([action, createdAt])
-  @@map("merchant_audit_logs")
-}
-
-// MerchantSession - Track merchant/employee sessions
-model MerchantSession {
-  id                  String          @id @default(cuid())
-  merchantId          String
-  employeeId          String?         // If employee session
-  userId              String          // User account linked
-  refreshTokenHash    String?         @db.VarChar(512)
-  deviceId            String?         // Client-generated stable id
-  deviceName          String?
-  platform            String?         // ios/android/web
-  ipAddress           String?
-  userAgent           String?
-  isTrusted           Boolean         @default(false)
-  createdAt           DateTime        @default(now())
-  lastSeenAt          DateTime        @default(now())
-  revokedAt           DateTime?
-
-  merchant            Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  employee            Employee?       @relation(fields: [employeeId], references: [id])
-
-  @@index([merchantId, revokedAt])
-  @@index([userId, createdAt])
-  @@map("merchant_sessions")
-}
-
-// MerchantProductOverride - Custom pricing per merchant
-model MerchantProductOverride {
-  id              String          @id @default(cuid())
-  merchantId      String
-  productId       String
-  isEnabled       Boolean         @default(true)
-  customPrice     Decimal?
-  customCost      Decimal?
-  updatedAt       DateTime        @updatedAt
-
-  product         CardProduct     @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@unique([merchantId, productId])
-  @@index([merchantId])
-  @@map("merchant_product_overrides")
-}
-
-// API Keys - For authenticating API requests
-model ApiKey {
-  id          String    @id @default(cuid())
-  name        String    // e.g., "Saeaa Website", "Edara Mobile App", "Asus App"
-  apiKey      String    // Prefix for lookup (not unique since we store prefix)
-  apiKeyHash  String    // bcrypt hash of the full API key
-  tenantId    String
-  isActive    Boolean   @default(true)
-  lastUsedAt  DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId])
-  @@index([apiKey])
-  @@map("api_keys")
 }

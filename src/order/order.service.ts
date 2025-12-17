@@ -246,6 +246,7 @@ export class OrderService {
         limit: limitNum,
         total,
         totalPages: Math.ceil(total / limitNum),
+        hasMore: pageNum < Math.ceil(total / limitNum),
       },
     };
   }
@@ -482,6 +483,7 @@ export class OrderService {
         limit: limitNum,
         total,
         totalPages: Math.ceil(total / limitNum),
+        hasMore: pageNum < Math.ceil(total / limitNum),
       },
     };
   }

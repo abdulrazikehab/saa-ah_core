@@ -6,6 +6,7 @@ import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { ActionLoggingInterceptor } from './common/interceptors/action-logging.interceptor';
+import { MobileOptimizationInterceptor } from './common/interceptors/mobile-optimization.interceptor';
 import { TenantModule } from './tenant/tenant.module';
 import { TenantMiddleware } from './tenant/tenant.middleware';
 import { UserModule } from './user/user.module';
@@ -42,6 +43,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { SiteConfigModule } from './site-config/site-config.module';
 import { SuperAdminGuard } from './guard/super-admin.guard';
 import { AdminController } from './admin/admin.controller';
+import { AppController } from './app.controller';
 import { TransactionModule } from './transaction/transaction.module';
 import { ActivityLogModule } from './activity-log/activity-log.module';
 import { ChatModule } from './chat/chat.module';
@@ -133,7 +135,7 @@ import { ApiKeyModule } from './api-key/api-key.module';
     KycSettingsModule,
     ApiKeyModule,
   ],
-  controllers: [AdminController],
+  controllers: [AppController, AdminController],
   providers: [
     {
       provide: APP_GUARD,
@@ -150,6 +152,10 @@ import { ApiKeyModule } from './api-key/api-key.module';
     {
       provide: APP_INTERCEPTOR,
       useClass: ActionLoggingInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: MobileOptimizationInterceptor,
     },
   ],
 })

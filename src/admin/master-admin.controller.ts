@@ -196,9 +196,15 @@ export class MasterAdminController {
     });
   }
 
-  @Get('partners/:id')
+  @Get('partners/:id(*)')
   async getPartnerById(@Param('id') id: string) {
-    return this.masterAdminService.getPartnerById(id);
+    try {
+      const decodedId = decodeURIComponent(id);
+      return this.masterAdminService.getPartnerById(decodedId);
+    } catch (error: any) {
+      this.logger.error('Error getting partner:', error);
+      throw new BadRequestException(`Failed to get partner: ${error?.message || 'Unknown error'}`);
+    }
   }
 
   @Post('partners')
@@ -218,7 +224,7 @@ export class MasterAdminController {
     return this.masterAdminService.createPartner(data);
   }
 
-  @Put('partners/:id')
+  @Put('partners/:id(*)')
   async updatePartner(
     @Param('id') id: string,
     @Body()
@@ -234,17 +240,36 @@ export class MasterAdminController {
       isActive?: boolean;
     },
   ) {
-    return this.masterAdminService.updatePartner(id, data);
+    try {
+      const decodedId = decodeURIComponent(id);
+      return this.masterAdminService.updatePartner(decodedId, data);
+    } catch (error: any) {
+      this.logger.error('Error updating partner:', error);
+      throw new BadRequestException(`Failed to update partner: ${error?.message || 'Unknown error'}`);
+    }
   }
 
-  @Delete('partners/:id')
+  @Delete('partners/:id(*)')
   async deletePartner(@Param('id') id: string) {
-    return this.masterAdminService.deletePartner(id);
+    try {
+      // Decode the ID in case it was URL-encoded
+      const decodedId = decodeURIComponent(id);
+      return this.masterAdminService.deletePartner(decodedId);
+    } catch (error: any) {
+      this.logger.error('Error deleting partner:', error);
+      throw new BadRequestException(`Failed to delete partner: ${error?.message || 'Unknown error'}`);
+    }
   }
 
-  @Get('partners/:id/stats')
+  @Get('partners/:id(*)/stats')
   async getPartnerStats(@Param('id') id: string) {
-    return this.masterAdminService.getPartnerStats(id);
+    try {
+      const decodedId = decodeURIComponent(id);
+      return this.masterAdminService.getPartnerStats(decodedId);
+    } catch (error: any) {
+      this.logger.error('Error getting partner stats:', error);
+      throw new BadRequestException(`Failed to get partner stats: ${error?.message || 'Unknown error'}`);
+    }
   }
 
   // ==================== SECURITY EVENTS ====================
@@ -401,7 +426,16 @@ export class MasterAdminController {
 
   @Post('ai-script')
   async updateGlobalAiScript(@Body() data: { script: string }) {
-    return this.masterAdminService.updateGlobalAiScript(data.script);
+    try {
+      if (data === undefined || data === null) {
+        throw new BadRequestException('Request body is required');
+      }
+      const script = data.script || '';
+      return this.masterAdminService.updateGlobalAiScript(script);
+    } catch (error: any) {
+      this.logger.error('Error updating AI script:', error);
+      throw new BadRequestException(`Failed to update AI script: ${error?.message || 'Unknown error'}`);
+    }
   }
 
   // ==================== DATABASE MANAGEMENT ====================
@@ -512,23 +546,63 @@ export class MasterAdminController {
     }
   }
 
-  @Get('api-keys/:id')
+  @Get('api-keys/:id(*)')
   async getApiKey(@Param('id') id: string) {
-    return this.apiKeyService.findOneForAdmin(id);
+    try {
+      const decodedId = decodeURIComponent(id);
+      return this.apiKeyService.findOneForAdmin(decodedId);
+    } catch (error: any) {
+      this.logger.error('Error getting API key:', error);
+      throw new BadRequestException(`Failed to get API key: ${error?.message || 'Unknown error'}`);
+    }
   }
 
-  @Put('api-keys/:id')
+  @Put('api-keys/:id(*)')
   async updateApiKey(@Param('id') id: string, @Body() dto: UpdateApiKeyDto) {
-    return this.apiKeyService.updateForAdmin(id, dto);
+    try {
+      // Decode the ID in case it was URL-encoded
+      const decodedId = decodeURIComponent(id);
+      return this.apiKeyService.updateForAdmin(decodedId, dto);
+    } catch (error: any) {
+      this.logger.error('Error updating API key:', error);
+      throw new BadRequestException(`Failed to update API key: ${error?.message || 'Unknown error'}`);
+    }
   }
 
-  @Delete('api-keys/:id')
+  @Delete('api-keys/:id(*)')
   async deleteApiKey(@Param('id') id: string) {
-    return this.apiKeyService.removeForAdmin(id);
+    try {
+      const decodedId = decodeURIComponent(id);
+      return this.apiKeyService.removeForAdmin(decodedId);
+    } catch (error: any) {
+      this.logger.error('Error deleting API key:', error);
+      throw new BadRequestException(`Failed to delete API key: ${error?.message || 'Unknown error'}`);
+    }
   }
 
-  @Post('api-keys/:id/regenerate')
+  @Post('api-keys/:id(*)/regenerate')
   async regenerateApiKey(@Param('id') id: string) {
-    return this.apiKeyService.regenerateForAdmin(id);
+    try {
+      const decodedId = decodeURIComponent(id);
+      return this.apiKeyService.regenerateForAdmin(decodedId);
+    } catch (error: any) {
+      this.logger.error('Error regenerating API key:', error);
+      throw new BadRequestException(`Failed to regenerate API key: ${error?.message || 'Unknown error'}`);
+    }
+  }
+
+  // ==================== ADMIN API KEY MANAGEMENT ====================
+
+  @Get('admin-api-key')
+  async getAdminApiKey() {
+    return this.masterAdminService.getAdminApiKey();
+  }
+
+  @Post('admin-api-key')
+  async setAdminApiKey(@Body() data: { apiKey: string }) {
+    if (!data.apiKey || data.apiKey.trim().length < 8) {
+      throw new BadRequestException('API key must be at least 8 characters long');
+    }
+    return this.masterAdminService.setAdminApiKey(data.apiKey.trim());
   }
 }

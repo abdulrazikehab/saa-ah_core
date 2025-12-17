@@ -16,18 +16,32 @@ export class ProductService {
 
  async create(tenantId: string, createProductDto: CreateProductDto, upsert?: boolean): Promise<ProductResponseDto> {
   if (!tenantId) {
-    throw new ForbiddenException('Tenant ID is required');
+    this.logger.error('❌ Product creation failed: tenantId is null or undefined');
+    throw new ForbiddenException('Tenant ID is required. Please ensure you are authenticated and have a market set up.');
   }
 
   this.logger.log(`🔄 Creating product for tenant: ${tenantId}${upsert ? ' (upsert mode)' : ''}`);
 
-  // FIRST: Ensure tenant exists in core database
+  // FIRST: Check if tenant exists (don't create if it doesn't - just verify)
   try {
-    await this.tenantSyncService.ensureTenantExists(tenantId);
+    const existingTenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true },
+    });
+    
+    if (!existingTenant) {
+      this.logger.error(`❌ Tenant ${tenantId} does not exist in database`);
+      throw new ForbiddenException(
+        `Cannot create product: Tenant ${tenantId} does not exist. Please set up your market first by going to Market Setup.`
+      );
+    }
     this.logger.log(`✅ Tenant verified: ${tenantId}`);
-  } catch (error) {
-    this.logger.error(`❌ Tenant synchronization failed:`, error);
-    throw new ForbiddenException(`Cannot create product: Tenant ${tenantId} is not valid`);
+  } catch (error: any) {
+    if (error instanceof ForbiddenException) {
+      throw error;
+    }
+    this.logger.error(`❌ Error checking tenant ${tenantId}:`, error);
+    throw new ForbiddenException(`Cannot create product: Failed to verify tenant. Please try again or contact support.`);
   }
 
   const { variants, images, categoryIds, suppliers, supplierIds, ...productData } = createProductDto;
@@ -357,6 +371,7 @@ export class ProductService {
             page: pageNum,
             limit: limitNum,
             totalPages: 0,
+            hasMore: false,
           },
         };
       }
@@ -428,6 +443,7 @@ export class ProductService {
         limit: limitNum,
         total,
         totalPages: Math.ceil(total / limitNum),
+        hasMore: pageNum < Math.ceil(total / limitNum),
       },
     };
   }

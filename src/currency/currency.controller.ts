@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, BadRequestException, Logger } from '@nestjs/common';
 import {
   CurrencyService,
   CreateCurrencyDto,
@@ -11,6 +11,8 @@ import { AuthenticatedRequest } from '../types/request.types';
 @UseGuards(JwtAuthGuard)
 @Controller('currencies')
 export class CurrencyController {
+  private readonly logger = new Logger(CurrencyController.name);
+
   constructor(private readonly currencyService: CurrencyService) {}
 
   @Post()
@@ -21,29 +23,56 @@ export class CurrencyController {
 
   @Get()
   async findAll(@Request() req: AuthenticatedRequest) {
-    const tenantId = req.user?.tenantId || req.user?.id;
-    if (!tenantId) {
-      throw new Error('Tenant ID is required');
+    try {
+      const tenantId = req.user?.tenantId || req.tenantId || req.user?.id;
+      if (!tenantId) {
+        this.logger.warn('Tenant ID missing in request', { user: req.user });
+        throw new BadRequestException('Tenant ID is required. Please ensure you are authenticated.');
+      }
+      return this.currencyService.findAll(tenantId);
+    } catch (error: any) {
+      this.logger.error('Error fetching currencies:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to fetch currencies: ${error?.message || 'Unknown error'}`);
     }
-    return this.currencyService.findAll(tenantId);
   }
 
   @Get('settings')
   async getSettings(@Request() req: AuthenticatedRequest) {
-    const tenantId = req.user?.tenantId || req.user?.id;
-    if (!tenantId) {
-      throw new Error('Tenant ID is required');
+    try {
+      const tenantId = req.user?.tenantId || req.tenantId || req.user?.id;
+      if (!tenantId) {
+        this.logger.warn('Tenant ID missing in request', { user: req.user });
+        throw new BadRequestException('Tenant ID is required. Please ensure you are authenticated.');
+      }
+      return this.currencyService.getSettings(tenantId);
+    } catch (error: any) {
+      this.logger.error('Error fetching currency settings:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to fetch currency settings: ${error?.message || 'Unknown error'}`);
     }
-    return this.currencyService.getSettings(tenantId);
   }
 
   @Get('default')
   async getDefault(@Request() req: AuthenticatedRequest) {
-    const tenantId = req.user?.tenantId || req.user?.id;
-    if (!tenantId) {
-      throw new Error('Tenant ID is required');
+    try {
+      const tenantId = req.user?.tenantId || req.tenantId || req.user?.id;
+      if (!tenantId) {
+        this.logger.warn('Tenant ID missing in request', { user: req.user });
+        throw new BadRequestException('Tenant ID is required. Please ensure you are authenticated.');
+      }
+      return this.currencyService.getDefaultCurrency(tenantId);
+    } catch (error: any) {
+      this.logger.error('Error fetching default currency:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to fetch default currency: ${error?.message || 'Unknown error'}`);
     }
-    return this.currencyService.getDefaultCurrency(tenantId);
   }
 
   @Put('default/:code')

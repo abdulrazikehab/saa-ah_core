@@ -13,6 +13,8 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
+  BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OrderService, CreateOrderDto, OrderResponseDto } from './order.service';
@@ -21,11 +23,18 @@ import { AuthenticatedRequest } from '../types/request.types';
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
 export class OrderController {
+  private readonly logger = new Logger(OrderController.name);
+
   constructor(private readonly orderService: OrderService) {}
 
-  private ensureTenantId(tenantId: string | undefined): string {
-    // Use provided tenantId, or fall back to default
-    return tenantId || process.env.DEFAULT_TENANT_ID || 'default';
+  private ensureTenantId(req: AuthenticatedRequest): string {
+    // Try multiple sources for tenantId: user object (JWT), middleware, or user id
+    const tenantId = req.user?.tenantId || req.tenantId || req.user?.id;
+    if (!tenantId) {
+      this.logger.warn('Tenant ID missing in request', { user: req.user, tenantId: req.tenantId });
+      throw new BadRequestException('Tenant ID is required. Please ensure you are authenticated.');
+    }
+    return tenantId;
   }
 
   @Post()
@@ -34,8 +43,16 @@ export class OrderController {
     @Request() req: AuthenticatedRequest,
     @Body() body: { cartId: string; orderData: CreateOrderDto },
   ): Promise<OrderResponseDto> {
-    const tenantId = this.ensureTenantId(req.tenantId);
-    return this.orderService.createOrder(tenantId, body.cartId, body.orderData);
+    try {
+      const tenantId = this.ensureTenantId(req);
+      return this.orderService.createOrder(tenantId, body.cartId, body.orderData);
+    } catch (error: any) {
+      this.logger.error('Error creating order:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to create order: ${error?.message || 'Unknown error'}`);
+    }
   }
 
   @Get()
@@ -45,16 +62,32 @@ export class OrderController {
     @Query('limit') limit?: string,
     @Query('status') status?: string,
   ) {
-    const tenantId = this.ensureTenantId(req.tenantId);
-    const pageNum = page ? parseInt(page, 10) : 1;
-    const limitNum = limit ? parseInt(limit, 10) : 10;
-    return this.orderService.getOrders(tenantId, pageNum, limitNum, status);
+    try {
+      const tenantId = this.ensureTenantId(req);
+      const pageNum = page ? parseInt(page, 10) : 1;
+      const limitNum = limit ? parseInt(limit, 10) : 10;
+      return this.orderService.getOrders(tenantId, pageNum, limitNum, status);
+    } catch (error: any) {
+      this.logger.error('Error getting orders:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to fetch orders: ${error?.message || 'Unknown error'}`);
+    }
   }
 
   @Get('stats')
   async getOrderStats(@Request() req: AuthenticatedRequest) {
-    const tenantId = this.ensureTenantId(req.tenantId);
-    return this.orderService.getOrderStats(tenantId);
+    try {
+      const tenantId = this.ensureTenantId(req);
+      return this.orderService.getOrderStats(tenantId);
+    } catch (error: any) {
+      this.logger.error('Error getting order stats:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to fetch order stats: ${error?.message || 'Unknown error'}`);
+    }
   }
 
   @Get('search')
@@ -64,13 +97,21 @@ export class OrderController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    if (!query) {
-      throw new Error('Search query is required');
+    try {
+      if (!query) {
+        throw new BadRequestException('Search query is required');
+      }
+      const tenantId = this.ensureTenantId(req);
+      const pageNum = page ? parseInt(page, 10) : 1;
+      const limitNum = limit ? parseInt(limit, 10) : 10;
+      return this.orderService.searchOrders(tenantId, query, pageNum, limitNum);
+    } catch (error: any) {
+      this.logger.error('Error searching orders:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to search orders: ${error?.message || 'Unknown error'}`);
     }
-    const tenantId = this.ensureTenantId(req.tenantId);
-    const pageNum = page ? parseInt(page, 10) : 1;
-    const limitNum = limit ? parseInt(limit, 10) : 10;
-    return this.orderService.searchOrders(tenantId, query, pageNum, limitNum);
   }
 
   @Get(':id')
@@ -78,8 +119,16 @@ export class OrderController {
     @Request() req: AuthenticatedRequest,
     @Param('id') orderId: string,
   ): Promise<OrderResponseDto> {
-    const tenantId = this.ensureTenantId(req.tenantId);
-    return this.orderService.getOrder(tenantId, orderId);
+    try {
+      const tenantId = this.ensureTenantId(req);
+      return this.orderService.getOrder(tenantId, orderId);
+    } catch (error: any) {
+      this.logger.error('Error getting order:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to fetch order: ${error?.message || 'Unknown error'}`);
+    }
   }
 
   @Put(':id/status')
@@ -88,8 +137,16 @@ export class OrderController {
     @Param('id') orderId: string,
     @Body('status') status: string,
   ): Promise<OrderResponseDto> {
-    const tenantId = this.ensureTenantId(req.tenantId);
-    return this.orderService.updateOrderStatus(tenantId, orderId, status);
+    try {
+      const tenantId = this.ensureTenantId(req);
+      return this.orderService.updateOrderStatus(tenantId, orderId, status);
+    } catch (error: any) {
+      this.logger.error('Error updating order status:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to update order status: ${error?.message || 'Unknown error'}`);
+    }
   }
 
   @Put(':id/cancel')
@@ -98,8 +155,16 @@ export class OrderController {
     @Param('id') orderId: string,
     @Body('reason') reason?: string,
   ): Promise<OrderResponseDto> {
-    const tenantId = this.ensureTenantId(req.tenantId);
-    return this.orderService.cancelOrder(tenantId, orderId, reason);
+    try {
+      const tenantId = this.ensureTenantId(req);
+      return this.orderService.cancelOrder(tenantId, orderId, reason);
+    } catch (error: any) {
+      this.logger.error('Error cancelling order:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to cancel order: ${error?.message || 'Unknown error'}`);
+    }
   }
 
   @Delete(':id')
@@ -108,13 +173,21 @@ export class OrderController {
     @Request() req: AuthenticatedRequest,
     @Param('id') orderId: string,
   ): Promise<void> {
-    const tenantId = this.ensureTenantId(req.tenantId);
-    // Note: In production, you might want to soft delete instead
-    const order = await this.orderService.getOrder(tenantId, orderId);
-    if (order.status !== 'CANCELLED') {
-      throw new Error('Only cancelled orders can be deleted');
+    try {
+      const tenantId = this.ensureTenantId(req);
+      // Note: In production, you might want to soft delete instead
+      const order = await this.orderService.getOrder(tenantId, orderId);
+      if (order.status !== 'CANCELLED') {
+        throw new BadRequestException('Only cancelled orders can be deleted');
+      }
+      // Implementation for hard delete would go here
+      // await this.orderService.hardDeleteOrder(tenantId, orderId);
+    } catch (error: any) {
+      this.logger.error('Error deleting order:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to delete order: ${error?.message || 'Unknown error'}`);
     }
-    // Implementation for hard delete would go here
-    // await this.orderService.hardDeleteOrder(tenantId, orderId);
   }
 }

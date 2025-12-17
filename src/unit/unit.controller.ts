@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, BadRequestException, Logger } from '@nestjs/common';
 import { UnitService, CreateUnitDto, UpdateUnitDto } from './unit.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthenticatedRequest } from '../types/request.types';
@@ -6,6 +6,8 @@ import { AuthenticatedRequest } from '../types/request.types';
 @UseGuards(JwtAuthGuard)
 @Controller('units')
 export class UnitController {
+  private readonly logger = new Logger(UnitController.name);
+
   constructor(private readonly unitService: UnitService) {}
 
   @Post()
@@ -16,11 +18,21 @@ export class UnitController {
 
   @Get()
   async findAll(@Request() req: AuthenticatedRequest) {
-    const tenantId = req.user?.tenantId || req.user?.id;
-    if (!tenantId) {
-      throw new Error('Tenant ID is required');
+    try {
+      // TenantRequiredGuard should have already validated tenantId
+      const tenantId = req.user?.tenantId || req.tenantId;
+      if (!tenantId) {
+        this.logger.warn('Tenant ID missing in request', { user: req.user, tenantId: req.tenantId });
+        throw new BadRequestException('Tenant ID is required. Please ensure you are authenticated.');
+      }
+      return this.unitService.findAll(tenantId);
+    } catch (error: any) {
+      this.logger.error('Error in findAll units:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to fetch units: ${error?.message || 'Unknown error'}`);
     }
-    return this.unitService.findAll(tenantId);
   }
 
   @Get(':id')

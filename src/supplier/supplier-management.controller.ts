@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, BadRequestException, Logger } from '@nestjs/common';
 import { SupplierService, CreateSupplierDto, UpdateSupplierDto } from './supplier.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthenticatedRequest } from '../types/request.types';
@@ -6,6 +6,8 @@ import { AuthenticatedRequest } from '../types/request.types';
 @UseGuards(JwtAuthGuard)
 @Controller('suppliers')
 export class SupplierManagementController {
+  private readonly logger = new Logger(SupplierManagementController.name);
+
   constructor(private readonly supplierService: SupplierService) {}
 
   @Post()
@@ -16,11 +18,21 @@ export class SupplierManagementController {
 
   @Get()
   async findAll(@Request() req: AuthenticatedRequest) {
-    const tenantId = req.user?.tenantId || req.user?.id;
-    if (!tenantId) {
-      throw new Error('Tenant ID is required');
+    try {
+      // TenantRequiredGuard should have already validated tenantId
+      const tenantId = req.user?.tenantId || req.tenantId;
+      if (!tenantId) {
+        this.logger.warn('Tenant ID missing in request', { user: req.user, tenantId: req.tenantId });
+        throw new BadRequestException('Tenant ID is required. Please ensure you are authenticated.');
+      }
+      return this.supplierService.findAll(tenantId);
+    } catch (error: any) {
+      this.logger.error('Error in findAll suppliers:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to fetch suppliers: ${error?.message || 'Unknown error'}`);
     }
-    return this.supplierService.findAll(tenantId);
   }
 
   @Get(':id')
