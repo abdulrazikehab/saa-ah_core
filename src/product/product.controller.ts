@@ -45,6 +45,12 @@ export class ProductController {
     @Query('upsert') upsert?: boolean
   ) {
     try {
+      // Check if user is authenticated
+      if (!req.user) {
+        this.logger.error('Product creation failed: User not authenticated');
+        throw new ForbiddenException('Authentication required. Please log in.');
+      }
+      
       // TenantRequiredGuard should have already validated tenantId
       // Only use actual tenantId sources, not user.id
       const tenantId = req.user?.tenantId || req.tenantId;
@@ -55,27 +61,34 @@ export class ProductController {
           hasUserTenantId: !!req.user?.tenantId,
           hasReqTenantId: !!req.tenantId,
           hasUserId: !!req.user?.id,
-          user: req.user
+          userEmail: req.user?.email,
+          userRole: req.user?.role
         });
         throw new ForbiddenException(
-          'You must set up a market first before creating products. Please go to Market Setup to create your store.'
+          'You must set up a market first before creating products. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
         );
       }
       
-      this.logger.log(`Creating product for tenant: ${tenantId}`);
+      this.logger.log(`Creating product for tenant: ${tenantId}, user: ${req.user?.email}`);
       return this.productService.create(tenantId, createProductDto, upsert);
     } catch (error: any) {
-      this.logger.error('Error in product creation:', error);
+      this.logger.error('Error in product creation:', {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name,
+        userId: req.user?.id,
+        tenantId: req.user?.tenantId || req.tenantId
+      });
+      
+      // Re-throw known exceptions as-is
       if (error instanceof ForbiddenException || error instanceof BadRequestException) {
         throw error;
       }
-      // Log the full error for debugging
-      this.logger.error('Product creation error details:', {
-        message: error?.message,
-        stack: error?.stack,
-        name: error?.name
-      });
-      throw new BadRequestException(`Failed to create product: ${error?.message || 'Unknown error'}`);
+      
+      // For unknown errors, wrap in BadRequestException to prevent 500
+      throw new BadRequestException(
+        `Failed to create product: ${error?.message || 'Unknown error'}. Please try again or contact support if the problem persists.`
+      );
     }
   }
 

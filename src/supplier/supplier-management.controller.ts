@@ -19,12 +19,26 @@ export class SupplierManagementController {
   @Get()
   async findAll(@Request() req: AuthenticatedRequest) {
     try {
-      // TenantRequiredGuard should have already validated tenantId
-      const tenantId = req.user?.tenantId || req.tenantId;
-      if (!tenantId) {
-        this.logger.warn('Tenant ID missing in request', { user: req.user, tenantId: req.tenantId });
-        throw new BadRequestException('Tenant ID is required. Please ensure you are authenticated.');
+      // Check if user is authenticated
+      if (!req.user) {
+        this.logger.warn('User not authenticated in suppliers findAll');
+        throw new BadRequestException('Authentication required. Please log in.');
       }
+      
+      // Get tenantId from user or request context
+      const tenantId = req.user?.tenantId || req.tenantId;
+      
+      if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+        this.logger.warn('Tenant ID missing or invalid in request', { 
+          userId: req.user?.id,
+          userTenantId: req.user?.tenantId, 
+          reqTenantId: req.tenantId 
+        });
+        throw new BadRequestException(
+          'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+        );
+      }
+      
       return this.supplierService.findAll(tenantId);
     } catch (error: any) {
       this.logger.error('Error in findAll suppliers:', error);

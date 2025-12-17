@@ -88,6 +88,9 @@ export class JwtAuthGuard implements CanActivate {
       
       const payload = this.jwtService.verify(token, { secret });
       
+      // Log payload info (without sensitive data) for debugging
+      this.logger.debug(`JWT payload verified: userId=${payload.sub}, hasTenantId=${!!payload.tenantId}, tenantId=${payload.tenantId || 'null'}, role=${payload.role}`);
+      
       // Allow users without tenantId (for tenant setup flow)
       // The tenantId will be null for newly registered users who haven't set up their tenant yet
       request.user = {
@@ -97,6 +100,12 @@ export class JwtAuthGuard implements CanActivate {
         email: payload.email
       };
       request.tenantId = payload.tenantId || null;
+      
+      // Log warning if tenantId is missing for authenticated user (helps debug 401/500 errors)
+      if (!payload.tenantId && payload.role !== 'SUPER_ADMIN') {
+        this.logger.warn(`JWT token missing tenantId for user ${payload.sub} (${payload.email}). User may need to log out and log back in after setting up a market.`);
+      }
+      
       return true;
     } catch (error: any) {
       // Log the error for debugging
