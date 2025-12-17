@@ -258,7 +258,20 @@ export class ProductService {
 
     // Coerce query parameters to numbers to avoid NaN
     const pageNum = Number(page) || 1;
-    const limitNum = Number(limit) || 10;
+    let limitNum = Number(limit) || 10;
+    
+    // Safety: Enforce maximum limit to prevent CPU/memory issues
+    const MAX_LIMIT = 1000;
+    if (limitNum > MAX_LIMIT) {
+      this.logger.warn(`⚠️ Limit ${limitNum} exceeds maximum ${MAX_LIMIT}, capping to ${MAX_LIMIT}`);
+      limitNum = MAX_LIMIT;
+    }
+    
+    // Safety: Ensure limit is positive
+    if (limitNum < 1) {
+      limitNum = 10;
+    }
+    
     const skip = (pageNum - 1) * limitNum;
 
     this.logger.log(`📦 Finding products for tenant ${tenantId} with filters:`, filters);

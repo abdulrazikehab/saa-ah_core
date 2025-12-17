@@ -22,8 +22,9 @@ export class PageService {
   private async ensureUniqueSlug(tenantId: string, baseSlug: string, excludeId?: string): Promise<string> {
     let slug = baseSlug;
     let counter = 1;
+    const MAX_ATTEMPTS = 1000; // Safety limit to prevent infinite loop
 
-    while (true) {
+    while (counter <= MAX_ATTEMPTS) {
       const existing = await this.prisma.page.findFirst({
         where: {
           tenantId,
@@ -39,6 +40,9 @@ export class PageService {
       slug = `${baseSlug}-${counter}`;
       counter++;
     }
+
+    // If we've exhausted all attempts, throw an error instead of looping forever
+    throw new Error(`Unable to generate unique slug after ${MAX_ATTEMPTS} attempts. Please choose a different base slug.`);
   }
 
   async create(tenantId: string, data: any) {
