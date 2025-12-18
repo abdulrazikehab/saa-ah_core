@@ -318,11 +318,20 @@ export class CategoryController {
   ) {
     const tenantId = this.ensureTenantId(req.tenantId);
     
+    await this.deleteCategoryInternal(tenantId, id);
+    return { message: 'Category deleted successfully' };
+  }
+
+  /**
+   * Internal helper for deleting a single category with all validations.
+   * Allows reuse from both single and bulk delete paths.
+   */
+  private async deleteCategoryInternal(tenantId: string, id: string): Promise<void> {
     // Verify category exists and belongs to tenant
     const existingCategory = await this.prisma.category.findFirst({
       where: {
-        id: id,
-        tenantId: tenantId,
+        id,
+        tenantId,
       },
     });
 
@@ -338,14 +347,14 @@ export class CategoryController {
     });
 
     if (productsWithCategory > 0) {
-      throw new BadRequestException('Cannot delete category that has products. Remove products first.');
+      throw new BadRequestException(
+        'Cannot delete category that has products. Remove products first.',
+      );
     }
 
     await this.prisma.category.delete({
-      where: { id: id },
+      where: { id },
     });
-
-    return { message: 'Category deleted successfully' };
   }
 
   @Post('bulk-delete')
@@ -366,41 +375,12 @@ export class CategoryController {
 
     for (const id of body.ids) {
       try {
-        // Verify category exists and belongs to tenant
-        const existingCategory = await this.prisma.category.findFirst({
-          where: {
-            id: id,
-            tenantId: tenantId,
-          },
-        });
-
-        if (!existingCategory) {
-          failed++;
-          errors.push(`Category ${id} not found`);
-          continue;
-        }
-
-        // Check if category has products
-        const productsWithCategory = await this.prisma.productCategory.count({
-          where: {
-            categoryId: id,
-          },
-        });
-
-        if (productsWithCategory > 0) {
-          failed++;
-          errors.push(`Category ${existingCategory.name} has products and cannot be deleted`);
-          continue;
-        }
-
-        await this.prisma.category.delete({
-          where: { id: id },
-        });
-
+        await this.deleteCategoryInternal(tenantId, id);
         deleted++;
       } catch (error: any) {
         failed++;
-        errors.push(`Failed to delete category ${id}: ${error.message}`);
+        const message = error?.message || 'Unknown error';
+        errors.push(`Failed to delete category ${id}: ${message}`);
       }
     }
 

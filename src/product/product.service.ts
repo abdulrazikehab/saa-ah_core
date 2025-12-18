@@ -14,7 +14,52 @@ export class ProductService {
     private tenantSyncService: TenantSyncService, // Add this dependency
   ) {}
 
- async create(tenantId: string, createProductDto: CreateProductDto, upsert?: boolean): Promise<ProductResponseDto> {
+  /**
+   * Generate a SKU based on product name and tenant.
+   *
+   * Rules:
+   * - Prefix = first two alphanumeric characters of the English name (lowercase),
+   *   fallback to 'pr' if not available.
+   * - Suffix = 3‑digit sequence per tenant+prefix (001, 002, 003, ...).
+   * - Ensures uniqueness per tenant by always picking the next available number.
+   */
+  private async generateSku(tenantId: string, name: string): Promise<string> {
+    const rawName = (name || '').trim().toLowerCase();
+    const alnum = rawName.replace(/[^a-z0-9]+/g, '');
+    const base = alnum || 'pr';
+    const prefix = base.substring(0, 2).padEnd(2, 'x'); // always 2 chars
+
+    // Find the last SKU for this tenant + prefix, ordered descending
+    const lastWithPrefix = await this.prisma.product.findFirst({
+      where: {
+        tenantId,
+        sku: {
+          startsWith: prefix,
+        },
+      },
+      orderBy: {
+        sku: 'desc',
+      },
+      select: {
+        sku: true,
+      },
+    });
+
+    let nextNumber = 1;
+    if (lastWithPrefix?.sku && lastWithPrefix.sku.length > prefix.length) {
+      const numericPart = lastWithPrefix.sku.substring(prefix.length);
+      const parsed = parseInt(numericPart, 10);
+      if (!Number.isNaN(parsed) && parsed >= 0) {
+        nextNumber = parsed + 1;
+      }
+    }
+
+    const sku = `${prefix}${String(nextNumber).padStart(3, '0')}`;
+    this.logger.log(`Generated SKU "${sku}" for product "${name}" (tenant: ${tenantId})`);
+    return sku;
+  }
+
+  async create(tenantId: string, createProductDto: CreateProductDto, upsert?: boolean): Promise<ProductResponseDto> {
   if (!tenantId) {
     this.logger.error('❌ Product creation failed: tenantId is null or undefined');
     throw new ForbiddenException('Tenant ID is required. Please ensure you are authenticated and have a market set up.');
@@ -45,6 +90,11 @@ export class ProductService {
   }
 
   const { variants, images, categoryIds, suppliers, supplierIds, ...productData } = createProductDto;
+
+  // Auto-generate SKU if not provided
+  if (!productData.sku || !productData.sku.trim()) {
+    productData.sku = await this.generateSku(tenantId, productData.name);
+  }
 
   // Check if SKU exists within tenant
   let existingProduct: { id: string } | null = null;
@@ -767,7 +817,10 @@ export class ProductService {
     }
   }
 
-  async bulkRemove(tenantId: string, ids: string[]): Promise<{ deleted: number; failed: number; errors: string[] }> {
+  async bulkRemove(
+    tenantId: string,
+    ids: string[],
+  ): Promise<{ deleted: number; failed: number; errors: string[] }> {
     if (!tenantId) {
       throw new ForbiddenException('Tenant ID is required');
     }
@@ -776,71 +829,51 @@ export class ProductService {
       throw new BadRequestException('No product IDs provided');
     }
 
-    // Ensure tenant exists
+    // Ensure tenant exists once before starting
     await this.tenantSyncService.ensureTenantExists(tenantId);
 
     let deleted = 0;
     let failed = 0;
     const errors: string[] = [];
 
-    // Process deletions in batches to avoid overwhelming the database
-    const batchSize = 10;
-    for (let i = 0; i < ids.length; i += batchSize) {
-      const batch = ids.slice(i, i + batchSize);
-      
-      await Promise.all(
-        batch.map(async (id) => {
-          try {
-            // Clean the ID
-            let cleanId = id.trim();
-            if (cleanId.includes('/') || cleanId.includes('+')) {
-              const parts = cleanId.split(/[/+]/);
-              const validParts = parts.filter(part => {
-                const trimmed = part.trim();
-                return trimmed.length >= 20 && !trimmed.includes('/') && !trimmed.includes('+');
-              });
-              if (validParts.length > 0) {
-                cleanId = validParts.reduce((a, b) => a.length > b.length ? a : b).trim();
-              }
-            }
+    // Process sequentially using the same logic as single delete
+    for (const rawId of ids) {
+      // Clean the ID similarly to previous implementation
+      let cleanId = rawId.trim();
+      if (cleanId.includes('/') || cleanId.includes('+')) {
+        const parts = cleanId.split(/[/+]/);
+        const validParts = parts.filter((part) => {
+          const trimmed = part.trim();
+          return (
+            trimmed.length >= 20 &&
+            !trimmed.includes('/') &&
+            !trimmed.includes('+')
+          );
+        });
+        if (validParts.length > 0) {
+          cleanId = validParts.reduce((a, b) => (a.length > b.length ? a : b)).trim();
+        }
+      }
 
-            // Verify product exists and belongs to tenant
-            const product = await this.prisma.product.findFirst({
-              where: { id: cleanId, tenantId },
-            });
+      try {
+        // Reuse the robust single-delete logic
+        await this.remove(tenantId, cleanId);
+        deleted++;
+      } catch (error: any) {
+        // If the product is already gone, treat it as a soft success
+        if (error instanceof NotFoundException) {
+          this.logger.warn(
+            `Product ${cleanId} not found during bulk delete (likely already deleted)`,
+          );
+          errors.push(`Product ${cleanId} not found (maybe already deleted)`);
+          continue;
+        }
 
-            if (!product) {
-              failed++;
-              errors.push(`Product ${cleanId} not found`);
-              return;
-            }
-
-            // Delete all related records in correct order
-            await this.prisma.$transaction(async (tx: any) => {
-              // Delete items that reference the product (no cascade delete)
-              await tx.cartItem.deleteMany({ where: { productId: cleanId } });
-              await tx.orderItem.deleteMany({ where: { productId: cleanId } });
-              await tx.productCollectionItem.deleteMany({ where: { productId: cleanId } });
-              await tx.productTagItem.deleteMany({ where: { productId: cleanId } });
-              
-              // Delete product-specific relations
-              await tx.productVariant.deleteMany({ where: { productId: cleanId } });
-              await tx.productImage.deleteMany({ where: { productId: cleanId } });
-              await tx.productCategory.deleteMany({ where: { productId: cleanId } });
-              await tx.productSupplier.deleteMany({ where: { productId: cleanId } });
-              
-              // Finally delete the product
-              await tx.product.delete({ where: { id: cleanId } });
-            });
-
-            deleted++;
-          } catch (error: any) {
-            failed++;
-            errors.push(`Failed to delete product ${id}: ${error.message}`);
-            this.logger.error(`Failed to delete product ${id}:`, error);
-          }
-        })
-      );
+        failed++;
+        const message = error?.message || 'Unknown error';
+        errors.push(`Failed to delete product ${cleanId}: ${message}`);
+        this.logger.error(`Failed to delete product ${cleanId}:`, error);
+      }
     }
 
     this.logger.log(`✅ Bulk delete completed: ${deleted} deleted, ${failed} failed`);

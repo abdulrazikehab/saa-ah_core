@@ -31,7 +31,16 @@ export class TenantMiddleware implements NestMiddleware {
       }
     }
 
-    // Method 2: Extract from X-Tenant-Domain header (Frontend explicit)
+    // Method 2: Explicit tenant ID header from frontend (highest priority after JWT)
+    if (!tenantId) {
+      const headerTenantId = req.headers['x-tenant-id'] as string | undefined;
+      if (headerTenantId && headerTenantId !== 'default' && headerTenantId !== 'system') {
+        tenantId = headerTenantId;
+        detectedFrom = 'header:x-tenant-id';
+      }
+    }
+
+    // Method 3: Extract from X-Tenant-Domain header (Frontend explicit domain)
     if (!tenantId) {
       const tenantDomainHeader = req.headers['x-tenant-domain'] as string;
       if (tenantDomainHeader) {
@@ -43,7 +52,7 @@ export class TenantMiddleware implements NestMiddleware {
       }
     }
 
-    // Method 3: Extract from hostname (Direct API calls or fallback)
+    // Method 4: Extract from hostname (Direct API calls or fallback)
     if (!tenantId) {
       const hostname = req.headers.host;
       if (hostname) {

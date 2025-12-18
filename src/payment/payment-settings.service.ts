@@ -129,16 +129,27 @@ export class PaymentSettingsService {
    */
   async getSettings(tenantId: string): Promise<PaymentSettings> {
     try {
-      // Get both tenant-specific gateways and admin-created global gateways (tenantId is null)
-      const methods = await this.prisma.paymentMethod.findMany({
-        where: {
-          OR: [
-            tenantId && tenantId !== 'default' ? { tenantId } : undefined,
-            { tenantId: null }, // Admin-created global gateways
-          ].filter(Boolean) as any,
-          isActive: true,
-        },
-      });
+      // Normalize tenantId: ignore invalid/system tenants
+      const effectiveTenantId =
+        tenantId && tenantId !== 'default' && tenantId !== 'system'
+          ? tenantId
+          : undefined;
+
+      // Build where clause:
+      // - If we have a real tenantId, include both tenant-specific and global (tenantId=null)
+      // - If not, only use global gateways
+      const where: any = { isActive: true };
+
+      if (effectiveTenantId) {
+        where.OR = [
+          { tenantId: effectiveTenantId },
+          { tenantId: null },
+        ];
+      } else {
+        where.tenantId = null;
+      }
+
+      const methods = await this.prisma.paymentMethod.findMany({ where });
 
     const hyperPay = methods.find((m: PaymentMethodRecord) => m.provider === 'HYPERPAY');
     const stripe = methods.find((m: PaymentMethodRecord) => m.provider === 'STRIPE');

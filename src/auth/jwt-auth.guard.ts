@@ -87,23 +87,37 @@ export class JwtAuthGuard implements CanActivate {
       this.logger.debug(`Verifying JWT token (length: ${token?.length || 0}, secret configured: ${!!secret})`);
       
       const payload = this.jwtService.verify(token, { secret });
+
+      // Determine effective tenantId:
+      // - If token has tenantId, it is the source of truth (security).
+      // - If token has no tenantId (old tokens / pre‑market users), fall back to any
+      //   tenantId that TenantMiddleware already resolved from domain / headers.
+      const tenantIdFromToken = payload.tenantId || null;
+      const existingTenantId = request.tenantId || null;
+      const effectiveTenantId = tenantIdFromToken || existingTenantId || null;
       
       // Log payload info (without sensitive data) for debugging
-      this.logger.debug(`JWT payload verified: userId=${payload.sub}, hasTenantId=${!!payload.tenantId}, tenantId=${payload.tenantId || 'null'}, role=${payload.role}`);
+      this.logger.debug(
+        `JWT payload verified: userId=${payload.sub}, tokenTenantId=${tenantIdFromToken || 'null'}, ` +
+        `effectiveTenantId=${effectiveTenantId || 'null'}, role=${payload.role}`
+      );
       
       // Allow users without tenantId (for tenant setup flow)
       // The tenantId will be null for newly registered users who haven't set up their tenant yet
       request.user = {
         id: payload.sub,
-        tenantId: payload.tenantId || null,
+        tenantId: effectiveTenantId,
         role: payload.role,
         email: payload.email
       };
-      request.tenantId = payload.tenantId || null;
+      request.tenantId = effectiveTenantId;
       
       // Log warning if tenantId is missing for authenticated user (helps debug 401/500 errors)
-      if (!payload.tenantId && payload.role !== 'SUPER_ADMIN') {
-        this.logger.warn(`JWT token missing tenantId for user ${payload.sub} (${payload.email}). User may need to log out and log back in after setting up a market.`);
+      if (!effectiveTenantId && payload.role !== 'SUPER_ADMIN') {
+        this.logger.warn(
+          `Authenticated user ${payload.sub} (${payload.email}) has no tenantId in token or request. ` +
+          `User may need to set up a market or log out and log back in after setup.`
+        );
       }
       
       return true;
