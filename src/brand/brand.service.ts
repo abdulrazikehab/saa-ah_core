@@ -49,29 +49,75 @@ export class BrandService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    const brand = await this.prisma.brand.create({
-      data: {
-        tenantId,
-        name: data.name,
-        nameAr: data.nameAr,
-        code: data.code,
-        shortName: data.shortName,
-        brandType: data.brandType,
-        status: data.status || 'Active',
-        rechargeUsdValue: data.rechargeUsdValue || 0,
-        usdValueForCoins: data.usdValueForCoins || 0,
-        safetyStock: data.safetyStock || 0,
-        leadTime: data.leadTime || 0,
-        reorderPoint: data.reorderPoint || 0,
-        averageConsumptionPerMonth: data.averageConsumptionPerMonth || 0,
-        averageConsumptionPerDay: data.averageConsumptionPerDay || 0,
-        abcAnalysis: data.abcAnalysis,
-        odooCategoryId: data.odooCategoryId,
-      },
-    });
+    // If a code is provided, make brand creation idempotent per (tenantId, code)
+    // Return existing brand instead of throwing on duplicates.
+    if (data.code) {
+      const existingBrand = await this.prisma.brand.findFirst({
+        where: {
+          tenantId,
+          code: data.code,
+        },
+      });
 
-    this.logger.log(`Brand created: ${brand.id} for tenant ${tenantId}`);
-    return brand;
+      if (existingBrand) {
+        this.logger.log(
+          `Brand already exists for tenant ${tenantId} with code ${data.code}. Returning existing brand.`,
+        );
+        return existingBrand;
+      }
+    }
+
+    try {
+      const brand = await this.prisma.brand.create({
+        data: {
+          tenantId,
+          name: data.name,
+          nameAr: data.nameAr,
+          code: data.code,
+          shortName: data.shortName,
+          brandType: data.brandType,
+          status: data.status || 'Active',
+          rechargeUsdValue: data.rechargeUsdValue || 0,
+          usdValueForCoins: data.usdValueForCoins || 0,
+          safetyStock: data.safetyStock || 0,
+          leadTime: data.leadTime || 0,
+          reorderPoint: data.reorderPoint || 0,
+          averageConsumptionPerMonth: data.averageConsumptionPerMonth || 0,
+          averageConsumptionPerDay: data.averageConsumptionPerDay || 0,
+          abcAnalysis: data.abcAnalysis,
+          odooCategoryId: data.odooCategoryId,
+        },
+      });
+
+      this.logger.log(`Brand created: ${brand.id} for tenant ${tenantId}`);
+      return brand;
+    } catch (error: any) {
+      // Handle unique constraint on (tenantId, code)
+      if (error?.code === 'P2002' && data.code) {
+        this.logger.warn(
+          `Duplicate brand code detected for tenant ${tenantId}: ${data.code}`,
+        );
+
+        // In case of race condition, try to load existing brand and return it
+        const existingBrand = await this.prisma.brand.findFirst({
+          where: {
+            tenantId,
+            code: data.code,
+          },
+        });
+
+        if (existingBrand) {
+          return existingBrand;
+        }
+
+        // Fallback: return a clear validation error
+        throw new BadRequestException(
+          'A brand with this code already exists for your store. Please use a different code.',
+        );
+      }
+
+      throw error;
+    }
   }
 
   async findAll(tenantId: string) {
