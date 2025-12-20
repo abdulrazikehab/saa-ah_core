@@ -61,11 +61,44 @@ export class TenantService {
     });
   }
 
-  async checkSubdomainAvailability(subdomain: string): Promise<boolean> {
+  async checkSubdomainAvailability(subdomain: string, excludeTenantId?: string): Promise<boolean> {
+    // Check if subdomain already exists
     const tenant = await this.prisma.tenant.findUnique({
       where: { subdomain },
     });
-    return !tenant;
+    
+    if (tenant) {
+      // If excludeTenantId is provided and matches, consider it available (for updates)
+      if (excludeTenantId && tenant.id === excludeTenantId) {
+        // Continue to check for custom domain conflicts
+      } else {
+        return false; // Subdomain is taken by another tenant
+      }
+    }
+    
+    // Check if subdomain conflicts with existing custom domain
+    // e.g., if subdomain "asus" conflicts with custom domain "asus.saeaa.com"
+    const potentialCustomDomains = [
+      `${subdomain}.saeaa.com`,
+      `${subdomain}.saeaa.net`
+    ];
+    
+    const existingCustomDomain = await this.prisma.customDomain.findFirst({
+      where: {
+        domain: { in: potentialCustomDomains },
+        status: { in: ['ACTIVE', 'PENDING'] } // Check both active and pending
+      }
+    });
+    
+    if (existingCustomDomain) {
+      // If excludeTenantId matches, allow (same tenant updating)
+      if (excludeTenantId && existingCustomDomain.tenantId === excludeTenantId) {
+        return true;
+      }
+      return false; // Custom domain conflict
+    }
+    
+    return true; // Subdomain is available
   }
 
   async resolveTenantId(domain: string): Promise<string | null> {

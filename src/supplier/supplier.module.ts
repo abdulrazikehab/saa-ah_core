@@ -8,6 +8,8 @@ import { SupplierController } from './supplier.controller';
 import { SupplierManagementController } from './supplier-management.controller';
 import { SupplierApiController } from './supplier-api.controller';
 import { PrismaModule } from '../prisma/prisma.module';
+import { BitaqatyBusinessService } from './integrations/bitaqaty-business.service';
+import { SupplierAdapterFactory } from './integrations/supplier-adapter.factory';
 
 @Module({
   imports: [PrismaModule, HttpModule],
@@ -17,12 +19,16 @@ import { PrismaModule } from '../prisma/prisma.module';
     SupplierService,
     SupplierPricingService,
     SupplierPurchaseService,
+    BitaqatyBusinessService,
+    SupplierAdapterFactory,
   ],
   exports: [
     SupplierInventoryService,
     SupplierService,
     SupplierPricingService,
     SupplierPurchaseService,
+    BitaqatyBusinessService,
+    SupplierAdapterFactory,
   ],
 })
 export class SupplierModule {}

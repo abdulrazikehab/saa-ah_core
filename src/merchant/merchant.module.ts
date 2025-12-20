@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { CardsModule } from '../cards/cards.module';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module';
+import { UserModule } from '../user/user.module';
 
 // Services
 import { MerchantService } from './services/merchant.service';
@@ -36,7 +37,7 @@ import { MerchantSessionController } from './controllers/merchant-session.contro
 import { MerchantWalletController } from './controllers/merchant-wallet.controller';
 
 @Module({
-  imports: [PrismaModule, CardsModule, CloudinaryModule],
+  imports: [PrismaModule, CardsModule, CloudinaryModule, UserModule],
   controllers: [
     MerchantAuthController,
     MerchantProfileController,

@@ -51,9 +51,15 @@ export class MerchantAuthController {
 
     if (!context) {
       // Try to create merchant account for user
+      // Pass user data to ensure user exists in core database
       const merchant = await this.merchantService.getOrCreateMerchant(
         req.tenantId,
         userId,
+        {
+          email: req.user.email,
+          name: req.user.name,
+          role: req.user.role,
+        },
       );
 
       return {

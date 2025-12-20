@@ -1,25 +1,66 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateMerchantProfileDto, MerchantSettingsDto } from '../dto';
+import { UserService } from '../../user/user.service';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class MerchantService {
   private readonly logger = new Logger(MerchantService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private userService: UserService,
+  ) {}
 
   // Get or create merchant for user
-  async getOrCreateMerchant(tenantId: string, userId: string, data?: { businessName?: string; businessNameAr?: string }) {
+  async getOrCreateMerchant(tenantId: string, userId: string, data?: { businessName?: string; businessNameAr?: string; email?: string; name?: string; role?: string }) {
     let merchant = await this.prisma.merchant.findUnique({
       where: { userId },
       include: { user: { select: { id: true, email: true, name: true } } },
     });
 
     if (!merchant) {
-      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      // CRITICAL: Verify tenant exists before creating merchant (to avoid foreign key constraint)
+      // Retry check up to 5 times with delays (handles potential transaction timing issues)
+      let tenant = null;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        tenant = await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+        });
+        if (tenant) {
+          this.logger.log(`Tenant ${tenantId} found on attempt ${attempt + 1}`);
+          break;
+        }
+        if (attempt < 4) {
+          // Wait before retry (increasing delay: 50ms, 100ms, 200ms, 300ms)
+          const delay = 50 * Math.pow(2, attempt);
+          this.logger.warn(`Tenant ${tenantId} not found on attempt ${attempt + 1}, retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+
+      if (!tenant) {
+        this.logger.error(`Tenant ${tenantId} does not exist after 5 attempts. Cannot create merchant.`);
+        throw new NotFoundException(`Tenant ${tenantId} not found. Please create tenant first.`);
+      }
+
+      // Ensure user exists in core database (sync from auth if needed)
+      let user = await this.prisma.user.findUnique({ where: { id: userId } });
+      
       if (!user) {
-        throw new NotFoundException('User not found');
+        // User doesn't exist in core database, sync from auth
+        if (data?.email) {
+          this.logger.log(`User ${userId} not found in core database, syncing from auth...`);
+          user = await this.userService.ensureUserExists(userId, {
+            email: data.email,
+            name: data.name,
+            role: data.role || 'SHOP_OWNER',
+            tenantId: tenantId, // Safe to pass now since tenant exists
+          });
+        } else {
+          throw new NotFoundException('User not found in core database. Please ensure user is synced from auth service.');
+        }
       }
 
       merchant = await this.prisma.merchant.create({
@@ -34,7 +75,7 @@ export class MerchantService {
         include: { user: { select: { id: true, email: true, name: true } } },
       });
 
-      this.logger.log(`Created merchant ${merchant.id} for user ${userId}`);
+      this.logger.log(`Created merchant ${merchant.id} for user ${userId} in tenant ${tenantId}`);
     }
 
     return merchant;

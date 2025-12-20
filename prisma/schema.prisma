@@ -5,7 +5,7 @@ generator client {
 datasource db {
   provider          = "postgresql"
   url               = env("DATABASE_URL")
-  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+  //shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 model Tenant {
@@ -890,9 +890,11 @@ model Supplier {
   discountRate        Decimal            @default(0)
   isActive            Boolean            @default(true)
   notes               String?
+  supplierType        SupplierType       @default(CUSTOM)
+  provider            String?            // e.g., 'BITAQATY_BUSINESS', 'CUSTOM_API', etc.
   apiEndpoint         String?
   apiKey              String?
-  apiConfig           Json?
+  apiConfig           Json?              // Supplier-specific configuration (credentials, settings, etc.)
   autoPurchaseEnabled Boolean            @default(false)
   priceCheckInterval  Int?
   createdAt           DateTime           @default(now())
@@ -903,6 +905,7 @@ model Supplier {
 
   @@index([tenantId])
   @@index([isActive])
+  @@index([supplierType])
   @@map("suppliers")
 }
 
@@ -1971,6 +1974,12 @@ enum IntegrationType {
   SOCIAL
   ACCOUNTING
   SUPPLIER
+}
+
+enum SupplierType {
+  CUSTOM
+  BITAQATY_BUSINESS
+  // Add more supplier types as needed
 }
 
 enum GiftType {

@@ -9,13 +9,14 @@ interface GenerateThemeDto {
 
 @Injectable()
 export class AiThemeService {
-  private anthropic!: Anthropic;
+  private anthropic?: Anthropic;
 
   constructor(private prisma: PrismaService) {
     const apiKey = process.env.ANT_API_KEY;
-    
+
     if (!apiKey) {
-      console.warn('⚠️  ANT_API_KEY not found. AI theme generation will not work.');
+      console.warn('⚠️  ANT_API_KEY not found. Falling back to mock AI theme generation.');
+      this.anthropic = undefined;
     } else {
       this.anthropic = new Anthropic({ apiKey });
       console.log('✅ Claude AI initialized for theme generation');
@@ -23,8 +24,10 @@ export class AiThemeService {
   }
 
   async generateTheme(tenantId: string, dto: GenerateThemeDto): Promise<any> {
+    // If Anthropic is not configured, gracefully fall back to mock theme generation
     if (!this.anthropic) {
-      throw new BadRequestException('AI service is not configured. Please add ANT_API_KEY to environment variables.');
+      console.warn('⚠️  Anthropic client not initialized. Using mock theme generator instead.');
+      return this.generateMockTheme(tenantId, dto);
     }
 
     try {

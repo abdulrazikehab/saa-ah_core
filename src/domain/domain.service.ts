@@ -22,7 +22,36 @@ export class DomainService {
     });
 
     if (existingDomain) {
-      throw new ConflictException('Domain already registered');
+      if (existingDomain.tenantId !== tenantId) {
+        throw new ConflictException('Domain already registered to another tenant');
+      }
+      // If it's the same tenant, allow re-adding (might be updating status)
+    }
+
+    // Check for subdomain conflicts (e.g., if someone tries to add "asus.saeaa.com" as custom domain
+    // when subdomain "asus" already exists)
+    const domainParts = normalizedDomain.split('.');
+    if (domainParts.length >= 2) {
+      const potentialSubdomain = domainParts[0];
+      const baseDomain = domainParts.slice(1).join('.');
+      
+      // Check if this matches a subdomain pattern (e.g., asus.saeaa.com)
+      if (baseDomain === 'saeaa.com' || baseDomain === 'saeaa.net') {
+        // Skip www and app as they're reserved main domains
+        if (potentialSubdomain !== 'www' && potentialSubdomain !== 'app') {
+          const existingTenant = await this.prisma.tenant.findUnique({
+            where: { subdomain: potentialSubdomain }
+          });
+          
+          if (existingTenant && existingTenant.id !== tenantId) {
+            throw new ConflictException(
+              `Domain "${normalizedDomain}" conflicts with existing subdomain "${potentialSubdomain}". ` +
+              `The subdomain "${potentialSubdomain}" is already in use by another tenant. ` +
+              `Please use a different domain or contact support.`
+            );
+          }
+        }
+      }
     }
 
     // Verify tenant exists

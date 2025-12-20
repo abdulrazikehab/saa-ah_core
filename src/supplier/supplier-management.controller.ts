@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, BadRequestException, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request, BadRequestException, Logger } from '@nestjs/common';
 import { SupplierService, CreateSupplierDto, UpdateSupplierDto } from './supplier.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthenticatedRequest } from '../types/request.types';
@@ -12,7 +12,17 @@ export class SupplierManagementController {
 
   @Post()
   async create(@Request() req: AuthenticatedRequest, @Body() data: CreateSupplierDto) {
-    const tenantId = req.user.tenantId || req.user.id;
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
     return this.supplierService.create(tenantId, data);
   }
 
@@ -51,7 +61,17 @@ export class SupplierManagementController {
 
   @Get(':id')
   async findOne(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
-    const tenantId = req.user.tenantId || req.user.id;
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
     return this.supplierService.findOne(tenantId, id);
   }
 
@@ -61,14 +81,107 @@ export class SupplierManagementController {
     @Param('id') id: string,
     @Body() data: UpdateSupplierDto,
   ) {
-    const tenantId = req.user.tenantId || req.user.id;
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
     return this.supplierService.update(tenantId, id, data);
   }
 
   @Delete(':id')
   async remove(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
-    const tenantId = req.user.tenantId || req.user.id;
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
     return this.supplierService.remove(tenantId, id);
+  }
+
+  @Post(':id/test-connection')
+  async testConnection(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
+    const connected = await this.supplierService.testConnection(tenantId, id);
+    return { connected, message: connected ? 'Connection successful' : 'Connection failed' };
+  }
+
+  @Get(':id/balance')
+  async checkBalance(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
+    return this.supplierService.checkBalance(tenantId, id);
+  }
+
+  @Get(':id/products')
+  async getProducts(
+    @Request() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Query('merchantId') merchantId?: string
+  ) {
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
+    return this.supplierService.getSupplierProducts(tenantId, id, merchantId);
+  }
+
+  @Get(':id/products/:productId')
+  async getProductDetails(
+    @Request() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Param('productId') productId: string
+  ) {
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
+    return this.supplierService.getSupplierProductDetails(tenantId, id, productId);
   }
 }
 

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Request, BadRequestException, ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Request, BadRequestException, ConflictException, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { TenantService } from './tenant.service';
 import { TenantSyncService } from './tenant-sync.service';
 import { AuthClientService } from './auth-client.service';
@@ -7,11 +7,15 @@ import { AuthenticatedRequest } from '../types/request.types';
 import { TemplateService } from '../template/template.service';
 import { PageService } from '../page/page.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { MerchantService } from '../merchant/services/merchant.service';
+import { UserService } from '../user/user.service';
 import { v4 as uuidv4 } from 'uuid';
 
 @UseGuards(JwtAuthGuard)
 @Controller('tenants')
 export class TenantController {
+  private readonly logger = new Logger(TenantController.name);
+
   constructor(
     private readonly tenantService: TenantService,
     private readonly tenantSyncService: TenantSyncService,
@@ -19,6 +23,8 @@ export class TenantController {
     private readonly templateService: TemplateService,
     private readonly pageService: PageService,
     private readonly prisma: PrismaService,
+    private readonly merchantService: MerchantService,
+    private readonly userService: UserService,
   ) {}
 
   @Post('setup')
@@ -32,15 +38,33 @@ export class TenantController {
       template?: string;
     }
   ) {
-    // Validate subdomain format
-    if (!/^[a-z0-9-]+$/.test(body.subdomain)) {
-      throw new BadRequestException('Subdomain must contain only lowercase letters, numbers, and hyphens');
-    }
+    try {
+      // Validate request body
+      if (!body) {
+        throw new BadRequestException('Request body is required');
+      }
+      if (!body.name || !body.name.trim()) {
+        throw new BadRequestException('Market name is required');
+      }
+      if (!body.subdomain || !body.subdomain.trim()) {
+        throw new BadRequestException('Subdomain is required');
+      }
+      if (!req.user || !req.user.id) {
+        throw new BadRequestException('User authentication required');
+      }
 
-    // Check if subdomain is already taken
+      // Validate subdomain format
+      if (!/^[a-z0-9-]+$/.test(body.subdomain)) {
+        throw new BadRequestException('Subdomain must contain only lowercase letters, numbers, and hyphens');
+      }
+
+    // Check if subdomain is already taken or conflicts with custom domain
     const isAvailable = await this.tenantService.checkSubdomainAvailability(body.subdomain);
     if (!isAvailable) {
-      throw new ConflictException('Subdomain is already taken');
+      throw new ConflictException(
+        `Subdomain "${body.subdomain}" is already taken or conflicts with an existing custom domain. ` +
+        `Please choose a different subdomain.`
+      );
     }
 
     // Check market limit
@@ -55,10 +79,12 @@ export class TenantController {
 
     // Generate new tenant ID
     const tenantId = uuidv4();
+    this.logger.log(`🔄 Starting tenant setup for ID: ${tenantId}, subdomain: ${body.subdomain}`);
     
     // Create tenant in both core and auth databases, and link to user
     try {
       // Create in auth database and link user (this also checks market limit)
+      this.logger.log(`📤 Creating tenant in auth database...`);
       await this.authClientService.createTenantAndLink(
         req.user.id,
         {
@@ -70,21 +96,140 @@ export class TenantController {
         },
         accessToken
       );
+      this.logger.log(`✅ Tenant created in auth database`);
 
       // Create tenant in core database
-      await this.tenantSyncService.ensureTenantExists(tenantId, {
+      this.logger.log(`📤 Creating tenant in core database...`);
+      const createdTenant = await this.tenantSyncService.ensureTenantExists(tenantId, {
         name: body.name,
         subdomain: body.subdomain,
         description: body.description,
         templateId: body.template,
       });
-    } catch (error: any) {
-      // If creation fails, try to clean up
-      await this.prisma.tenant.delete({ where: { id: tenantId } }).catch(() => {});
-      if (error.message?.includes('Market limit reached')) {
-        throw new ForbiddenException(error.message);
+
+      if (!createdTenant) {
+        this.logger.error(`❌ ensureTenantExists returned null for tenant ${tenantId}`);
+        throw new BadRequestException('Failed to create tenant in core database');
       }
-      throw new BadRequestException(error.message || 'Failed to create market. Please try again.');
+      this.logger.log(`✅ Tenant created successfully: ${createdTenant.id}`);
+
+      // Verify tenant exists in database (double-check after creation)
+      // Use a more robust verification with multiple retries
+      let verifiedTenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+      });
+      
+      // If we got the tenant from ensureTenantExists, use it directly
+      if (!verifiedTenant && createdTenant) {
+        this.logger.log(`⚠️ Tenant not immediately visible, using created tenant data...`);
+        verifiedTenant = createdTenant as any; // Type assertion for compatibility
+      }
+
+      if (!verifiedTenant) {
+        // Retry check with exponential backoff (handles potential transaction timing)
+        const maxRetries = 10; // Increased retries
+        const baseDelay = 50; // Start with 50ms delay
+        
+        for (let i = 0; i < maxRetries; i++) {
+          const delay = Math.min(baseDelay * Math.pow(2, i), 500); // Exponential backoff, capped at 500ms
+          this.logger.log(`⏳ Tenant ${tenantId} not found yet, retrying in ${delay}ms (attempt ${i + 1}/${maxRetries})...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          
+          verifiedTenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+          });
+          
+          if (verifiedTenant) {
+            this.logger.log(`✅ Tenant ${tenantId} found after ${i + 1} attempt(s)`);
+            break;
+          }
+        }
+        
+        if (!verifiedTenant) {
+          this.logger.error(`❌ Tenant ${tenantId} was not found after creation. Checking database...`);
+          // Final check - maybe there's a database connection issue
+          // Final diagnostic check
+          const allTenants = await this.prisma.tenant.findMany({ take: 5 });
+          this.logger.log(`Database connection OK. Found ${allTenants.length} tenant(s) in database.`);
+          
+          // Check if tenant exists with different query
+          const tenantBySubdomain = await this.prisma.tenant.findFirst({
+            where: { subdomain: body.subdomain },
+          });
+          
+          if (tenantBySubdomain && tenantBySubdomain.id !== tenantId) {
+            this.logger.error(`⚠️ Found tenant with same subdomain but different ID: ${tenantBySubdomain.id}`);
+            throw new ConflictException('Subdomain is already taken by another tenant');
+          }
+          
+          if (allTenants.length === 0) {
+            this.logger.error(`❌ Database connection issue: No tenants found in database`);
+            throw new BadRequestException('Database connection issue. Please try again.');
+          }
+          
+          throw new BadRequestException(`Tenant ${tenantId} was not found after creation. Please try again.`);
+        }
+      }
+
+      // Ensure user exists in core database (sync from auth)
+      // Pass tenantId only after tenant is confirmed to exist
+      await this.userService.ensureUserExists(req.user.id, {
+        email: req.user.email || '',
+        name: req.user.name,
+        role: req.user.role || 'SHOP_OWNER',
+        tenantId: tenantId, // Now safe to pass since tenant exists
+      });
+
+      // Create merchant for this user and tenant (with user data for auto-sync if needed)
+      await this.merchantService.getOrCreateMerchant(tenantId, req.user.id, {
+        businessName: body.name,
+        email: req.user.email || '',
+        name: req.user.name,
+        role: req.user.role || 'SHOP_OWNER',
+      });
+    } catch (error: any) {
+      this.logger.error(`❌ Error during tenant setup for ${tenantId}:`, error);
+      
+      // If creation fails, try to clean up (ignore errors if tenant doesn't exist)
+      try {
+        const tenantExists = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+        if (tenantExists) {
+          this.logger.warn(`Attempting to delete partially created tenant ${tenantId} due to error.`);
+          await this.prisma.tenant.delete({ where: { id: tenantId } });
+          this.logger.log(`Cleaned up tenant ${tenantId}.`);
+        } else {
+          this.logger.warn(`Tenant ${tenantId} did not exist in core database, no cleanup needed.`);
+        }
+      } catch (cleanupError) {
+        // Ignore cleanup errors
+        this.logger.warn(`Cleanup failed for tenant ${tenantId}: ${cleanupError}`);
+      }
+      
+      // Handle specific error types
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      if (error instanceof ConflictException) {
+        throw error;
+      }
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      // Check error message for specific cases
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      if (errorMessage.includes('Market limit reached')) {
+        throw new ForbiddenException(errorMessage);
+      }
+      
+      // Log full error details for debugging
+      this.logger.error(`Full error details:`, {
+        message: errorMessage,
+        stack: error?.stack,
+        name: error?.name,
+      });
+      
+      throw new BadRequestException(errorMessage || 'Failed to create market. Please try again.');
     }
 
     // Initialize default SiteConfig for the new market
@@ -249,6 +394,21 @@ export class TenantController {
       isActive: true,
       createdAt: new Date().toISOString(),
     };
+    } catch (error: any) {
+      // This catch block handles errors from the entire method
+      this.logger.error(`❌ Error in setupMarket method:`, error);
+      
+      // Re-throw known exceptions
+      if (error instanceof BadRequestException || 
+          error instanceof ConflictException || 
+          error instanceof ForbiddenException) {
+        throw error;
+      }
+      
+      // For unknown errors, wrap in BadRequestException
+      const errorMessage = error?.message || error?.toString() || 'Failed to create market. Please try again.';
+      throw new BadRequestException(errorMessage);
+    }
   }
 
   @Get('me')
@@ -307,12 +467,15 @@ export class TenantController {
         throw new BadRequestException('Subdomain must contain only lowercase letters, numbers, and hyphens');
       }
 
-      const isAvailable = await this.tenantService.checkSubdomainAvailability(body.subdomain);
+      const isAvailable = await this.tenantService.checkSubdomainAvailability(body.subdomain, tenantId);
       if (!isAvailable) {
-        // Check if it's the same tenant
+        // Check if it's the same tenant (double-check, though checkSubdomainAvailability should handle this)
         const existingTenant = await this.tenantService.getTenant(tenantId);
         if (existingTenant.subdomain !== body.subdomain) {
-          throw new ConflictException('Subdomain is already taken');
+          throw new ConflictException(
+            `Subdomain "${body.subdomain}" is already taken or conflicts with an existing custom domain. ` +
+            `Please choose a different subdomain.`
+          );
         }
       }
     }

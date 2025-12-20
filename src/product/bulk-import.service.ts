@@ -38,14 +38,19 @@ export class BulkImportService {
   private async processProducts(tenantId: string, products: any[]) {
     for (const productData of products) {
       try {
+        // If SKU is provided and not empty/whitespace, use it; otherwise let productService auto-generate
+        const sku = productData.sku && productData.sku.trim() ? productData.sku.trim() : undefined;
+        
         await this.productService.create(tenantId, {
           name: productData.name,
           description: productData.description,
-          sku: productData.sku,
+          sku: sku, // Will be auto-generated if undefined
           price: parseFloat(productData.price),
           compareAtPrice: productData.compareAtPrice ? parseFloat(productData.compareAtPrice) : undefined,
           isAvailable: productData.isAvailable !== 'false',
         });
+        
+        this.logger.log(`✅ Imported product: ${productData.name}${sku ? ` (SKU: ${sku})` : ' (auto-generated SKU)'}`);
       } catch (error) {
         this.logger.error(`Failed to import product ${productData.name}: ${error}`);
       }

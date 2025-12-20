@@ -1,6 +1,9 @@
 // apps/app-core/src/supplier/supplier.service.ts
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { SupplierAdapterFactory } from './integrations/supplier-adapter.factory';
+import { SupplierAdapter } from './integrations/supplier-adapter.interface';
+import { SupplierType } from '@prisma/client';
 
 export interface CreateSupplierDto {
   name: string;
@@ -11,6 +14,8 @@ export interface CreateSupplierDto {
   address?: string;
   discountRate?: number;
   notes?: string;
+  supplierType?: SupplierType;
+  provider?: string;
   // API Configuration
   apiEndpoint?: string;
   apiKey?: string;
@@ -29,6 +34,8 @@ export interface UpdateSupplierDto {
   discountRate?: number;
   isActive?: boolean;
   notes?: string;
+  supplierType?: SupplierType;
+  provider?: string;
   // API Configuration
   apiEndpoint?: string;
   apiKey?: string;
@@ -41,7 +48,10 @@ export interface UpdateSupplierDto {
 export class SupplierService {
   private readonly logger = new Logger(SupplierService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private adapterFactory: SupplierAdapterFactory
+  ) {}
 
   async create(tenantId: string, data: CreateSupplierDto) {
     if (!tenantId) {
@@ -59,6 +69,8 @@ export class SupplierService {
         address: data.address,
         discountRate: data.discountRate || 0,
         notes: data.notes,
+        supplierType: data.supplierType || 'CUSTOM',
+        provider: data.provider,
         apiEndpoint: data.apiEndpoint,
         apiKey: data.apiKey,
         apiConfig: data.apiConfig,
@@ -126,6 +138,8 @@ export class SupplierService {
         discountRate: data.discountRate,
         isActive: data.isActive,
         notes: data.notes,
+        supplierType: data.supplierType,
+        provider: data.provider,
         apiEndpoint: data.apiEndpoint,
         apiKey: data.apiKey,
         apiConfig: data.apiConfig,
@@ -167,6 +181,83 @@ export class SupplierService {
 
     this.logger.log(`Supplier hard deleted: ${id}`);
     return { id, deleted: true };
+  }
+
+  /**
+   * Get supplier adapter for API operations
+   */
+  private async getAdapter(supplierId: string, tenantId: string): Promise<SupplierAdapter> {
+    const supplier = await this.findOne(tenantId, supplierId);
+    if (!supplier) {
+      throw new NotFoundException('Supplier not found');
+    }
+    return this.adapterFactory.createAdapter(supplier);
+  }
+
+  /**
+   * Check supplier balance
+   */
+  async checkBalance(tenantId: string, supplierId: string) {
+    const adapter = await this.getAdapter(supplierId, tenantId);
+    return adapter.checkBalance();
+  }
+
+  /**
+   * Get products from supplier
+   */
+  async getSupplierProducts(tenantId: string, supplierId: string, merchantId?: string) {
+    const adapter = await this.getAdapter(supplierId, tenantId);
+    return adapter.getProducts(merchantId);
+  }
+
+  /**
+   * Get product details from supplier
+   */
+  async getSupplierProductDetails(tenantId: string, supplierId: string, productId: string) {
+    const adapter = await this.getAdapter(supplierId, tenantId);
+    return adapter.getProductDetails(productId);
+  }
+
+  /**
+   * Test supplier connection
+   */
+  async testConnection(tenantId: string, supplierId: string) {
+    const adapter = await this.getAdapter(supplierId, tenantId);
+    return adapter.testConnection();
+  }
+
+  /**
+   * Purchase product from supplier
+   */
+  async purchaseFromSupplier(
+    tenantId: string,
+    supplierId: string,
+    request: {
+      productId: string;
+      quantity?: number;
+      resellerRefNumber: string;
+      terminalId?: string;
+      inquireReferenceNumber?: string;
+      inputParameters?: Record<string, string>;
+    }
+  ) {
+    const adapter = await this.getAdapter(supplierId, tenantId);
+    return adapter.purchaseProduct({
+      productId: request.productId,
+      quantity: request.quantity,
+      resellerRefNumber: request.resellerRefNumber,
+      terminalId: request.terminalId,
+      inquireReferenceNumber: request.inquireReferenceNumber,
+      inputParameters: request.inputParameters,
+    });
+  }
+
+  /**
+   * Check transaction status
+   */
+  async checkTransactionStatus(tenantId: string, supplierId: string, resellerRefNumber: string) {
+    const adapter = await this.getAdapter(supplierId, tenantId);
+    return adapter.checkTransactionStatus(resellerRefNumber);
   }
 }
 

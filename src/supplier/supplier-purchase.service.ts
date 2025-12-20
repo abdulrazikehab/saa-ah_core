@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -280,9 +280,12 @@ export class SupplierPurchaseService {
   async getPurchases(tenantId: string) {
     try {
       if (!tenantId) {
-        throw new Error('Tenant ID is required');
+        throw new BadRequestException('Tenant ID is required');
       }
-      return await this.prisma.supplierPurchase.findMany({
+      
+      this.logger.debug(`Fetching purchases for tenant: ${tenantId}`);
+      
+      const purchases = await this.prisma.supplierPurchase.findMany({
         where: { tenantId },
         include: {
           supplier: {
@@ -302,9 +305,21 @@ export class SupplierPurchaseService {
         },
         orderBy: { purchaseDate: 'desc' },
       });
+
+      this.logger.debug(`Found ${purchases.length} purchases for tenant ${tenantId}`);
+      return purchases || [];
     } catch (error: any) {
       this.logger.error(`Error fetching purchases for tenant ${tenantId}:`, error);
-      throw error;
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      // If it's a Prisma error, provide more context
+      if (error?.code) {
+        this.logger.error(`Prisma error code: ${error.code}`, error);
+      }
+      throw new BadRequestException(
+        `Failed to fetch purchases: ${error?.message || 'Unknown error'}`
+      );
     }
   }
 }

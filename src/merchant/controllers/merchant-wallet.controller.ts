@@ -148,6 +148,13 @@ export class MerchantWalletController {
       }
     }
 
+    // Get user data for wallet creation if needed
+    const userData = req.user.email ? {
+      email: req.user.email,
+      name: req.user.name,
+      role: req.user.role,
+    } : undefined;
+
     // Create top-up request
     const topUpRequest = await this.walletService.createTopUpRequest(
       tenantId,
@@ -160,6 +167,7 @@ export class MerchantWalletController {
         senderAccountId: body.senderAccountId,
         receiptImage: receiptImageUrl,
       },
+      userData,
     );
 
     return {

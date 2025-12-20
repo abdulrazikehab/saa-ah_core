@@ -2,6 +2,9 @@ import { Injectable, Logger, NotFoundException, BadRequestException, Inject, Opt
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { CouponService } from '../coupon/coupon.service';
+import { TaxService } from '../tax/tax.service';
+import { ShippingService } from '../shipping/shipping.service';
+import { CouponType } from '@prisma/client';
 
 @Injectable()
 export class CartService {
@@ -11,6 +14,8 @@ export class CartService {
     private prisma: PrismaService,
     @Optional() @Inject(RedisService) private redisService?: RedisService,
     @Optional() private couponService?: CouponService,
+    @Optional() private taxService?: TaxService,
+    @Optional() private shippingService?: ShippingService,
   ) {}
 
   async getOrCreateCart(tenantId: string, sessionId?: string, userId?: string) {
@@ -741,33 +746,101 @@ export class CartService {
     return cart;
   }
 
-  async calculateCartTotal(cart: any) {
+  /**
+   * Calculate cart total with proper precision and using Tax/Shipping services
+   * @param cart - Cart object with items
+   * @param shippingAddress - Optional shipping address for accurate tax/shipping calculation
+   */
+  async calculateCartTotal(cart: any, shippingAddress?: any) {
+    // Helper function to round to 2 decimal places for currency
+    const roundCurrency = (value: number): number => {
+      return Math.round(value * 100) / 100;
+    };
+
+    // Calculate subtotal with precision
     let subtotal = 0;
     
     for (const item of cart.cartItems) {
       const price = item.productVariant?.price || item.product.price;
-      subtotal += Number(price) * item.quantity;
+      const itemTotal = Number(price) * item.quantity;
+      subtotal += itemTotal;
     }
+    subtotal = roundCurrency(subtotal);
 
+    // Calculate discount
     let discountAmount = 0;
-    let shippingAmount = subtotal > 100 ? 0 : 10; // Default logic
-
     if (cart.couponCode && this.couponService) {
       try {
         const coupon = await this.couponService.validate(cart.tenantId, cart.couponCode, subtotal);
         discountAmount = this.couponService.calculateDiscount(coupon, subtotal);
-        
-        if (coupon.type === 'FREE_SHIPPING') {
-          shippingAmount = 0;
-        }
+        discountAmount = roundCurrency(Math.min(discountAmount, subtotal)); // Ensure discount doesn't exceed subtotal
       } catch (error: any) {
         this.logger.warn(`Invalid coupon code ${cart.couponCode}: ${error.message}`);
-        // Optionally remove invalid coupon from cart
       }
     }
 
-    const taxAmount = (subtotal - discountAmount) * 0.15; // 15% tax example
-    const total = subtotal - discountAmount + taxAmount + shippingAmount;
+    // Calculate shipping using ShippingService if available
+    let shippingAmount = 0;
+    let hasFreeShipping = false;
+    
+    if (cart.couponCode && this.couponService) {
+      try {
+        const coupon = await this.couponService.findByCode(cart.tenantId, cart.couponCode);
+        if (coupon?.type === CouponType.FREE_SHIPPING) {
+          hasFreeShipping = true;
+        }
+      } catch (error) {
+        // Coupon check failed, continue with normal shipping calculation
+      }
+    }
+
+    if (!hasFreeShipping && this.shippingService && shippingAddress) {
+      try {
+        const cartItemsForShipping = cart.cartItems.map((item: any) => ({
+          price: Number(item.productVariant?.price || item.product.price),
+          quantity: item.quantity,
+        }));
+        shippingAmount = await this.shippingService.calculateRate(
+          cart.tenantId,
+          shippingAddress,
+          cartItemsForShipping
+        );
+        shippingAmount = roundCurrency(shippingAmount);
+      } catch (error: any) {
+        this.logger.warn(`Error calculating shipping: ${error.message}, using default`);
+        // Fallback to default shipping logic
+        shippingAmount = subtotal > 100 ? 0 : 10;
+      }
+    } else if (!hasFreeShipping) {
+      // Default shipping logic when service not available
+      shippingAmount = subtotal > 100 ? 0 : 10;
+    }
+
+    // Calculate tax using TaxService if available
+    const taxableAmount = subtotal - discountAmount;
+    let taxAmount = 0;
+    
+    if (this.taxService && shippingAddress?.country) {
+      try {
+        const taxResult = await this.taxService.calculateTax(
+          cart.tenantId,
+          taxableAmount,
+          shippingAddress.country,
+          shippingAddress.state
+        );
+        taxAmount = roundCurrency(taxResult.taxAmount);
+      } catch (error: any) {
+        this.logger.warn(`Error calculating tax: ${error.message}, using default 15%`);
+        // Fallback to default 15% tax
+        taxAmount = roundCurrency(taxableAmount * 0.15);
+      }
+    } else {
+      // Default 15% tax when service not available or no address
+      taxAmount = roundCurrency(taxableAmount * 0.15);
+    }
+
+    // Calculate final total
+    const total = roundCurrency(subtotal - discountAmount + taxAmount + shippingAmount);
 
     return {
       subtotal,

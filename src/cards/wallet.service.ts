@@ -1,15 +1,39 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { UserService } from '../user/user.service';
 import { Decimal } from '@prisma/client/runtime/library';
 
 @Injectable()
 export class WalletService {
   private readonly logger = new Logger(WalletService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private userService: UserService,
+  ) {}
 
   // Get or create wallet for user
-  async getOrCreateWallet(tenantId: string, userId: string) {
+  async getOrCreateWallet(tenantId: string, userId: string, userData?: { email?: string; name?: string; role?: string }) {
+    // First, ensure user exists in core database
+    let user = await this.prisma.user.findUnique({ where: { id: userId } });
+    
+    if (!user && userData?.email) {
+      this.logger.log(`User ${userId} not found in core database, syncing from auth...`);
+      try {
+        user = await this.userService.ensureUserExists(userId, {
+          email: userData.email,
+          name: userData.name,
+          role: userData.role || 'SHOP_OWNER',
+          tenantId: tenantId,
+        });
+      } catch (error) {
+        this.logger.error(`Failed to ensure user exists: ${error}`);
+        throw new NotFoundException(`User ${userId} not found. Please ensure user is synced from auth service.`);
+      }
+    } else if (!user) {
+      throw new NotFoundException(`User ${userId} not found. Please ensure user is synced from auth service.`);
+    }
+
     let wallet = await this.prisma.wallet.findUnique({
       where: { userId },
     });
@@ -202,9 +226,24 @@ export class WalletService {
       receiptImage?: string;
       notes?: string;
     },
+    userData?: { email?: string; name?: string; role?: string },
   ) {
-    // Ensure wallet exists
-    await this.getOrCreateWallet(tenantId, userId);
+    // Ensure wallet exists (and user exists)
+    await this.getOrCreateWallet(tenantId, userId, userData);
+
+    // Validate bankId if provided
+    let validBankId: string | undefined = undefined;
+    if (data.bankId) {
+      const bank = await this.prisma.bank.findUnique({
+        where: { id: data.bankId },
+      });
+      if (!bank) {
+        this.logger.warn(`Bank ${data.bankId} not found, setting bankId to null`);
+        validBankId = undefined;
+      } else {
+        validBankId = data.bankId;
+      }
+    }
 
     const request = await this.prisma.walletTopUpRequest.create({
       data: {
@@ -213,7 +252,7 @@ export class WalletService {
         amount: data.amount,
         currency: data.currency || 'SAR',
         paymentMethod: data.paymentMethod,
-        bankId: data.bankId,
+        bankId: validBankId, // Only set if bank exists
         senderAccountId: data.senderAccountId,
         senderName: data.senderName,
         transferReference: data.transferReference,

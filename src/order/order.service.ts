@@ -3,6 +3,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantSyncService } from '../tenant/tenant-sync.service';
 import { SupplierInventoryService } from '../supplier/supplier-inventory.service';
+import { CartService } from '../cart/cart.service';
 
 export interface CreateOrderDto {
   customerEmail: string;
@@ -50,6 +51,7 @@ export class OrderService {
     private prisma: PrismaService,
     private tenantSyncService: TenantSyncService,
     private supplierInventoryService: SupplierInventoryService,
+    private cartService: CartService,
   ) {}
 
   async createOrder(tenantId: string, cartId: string, orderData: CreateOrderDto): Promise<OrderResponseDto> {
@@ -78,17 +80,11 @@ export class OrderService {
       throw new BadRequestException('Cart is empty');
     }
 
-    // Calculate total and validate inventory with supplier sync
-    let totalAmount = 0;
+    // Prepare items for supplier validation
     const inventoryChecks: { variantId: any; currentQuantity: any; reservedQuantity: any; }[] = [];
     const itemsForValidation: { productId: string; variantId: string; quantity: number }[] = [];
 
     for (const item of cart.cartItems) {
-      const price = item.productVariant?.price || item.product.price;
-      const itemTotal = price * item.quantity;
-      totalAmount += itemTotal;
-
-      // Prepare items for supplier validation
       if (item.productVariant) {
         itemsForValidation.push({
           productId: item.product.id,
@@ -141,11 +137,22 @@ export class OrderService {
       }
     }
 
+    // Calculate cart total with breakdown using CartService
+    const cartTotal = await this.cartService.calculateCartTotal(updatedCart, orderData.shippingAddress);
+    
+    // Round all amounts to 2 decimal places for precision
+    const roundCurrency = (value: number): number => Math.round(value * 100) / 100;
+    const subtotalAmount = roundCurrency(cartTotal.subtotal);
+    const discountAmount = roundCurrency(cartTotal.discount);
+    const taxAmount = roundCurrency(cartTotal.tax);
+    const shippingAmount = roundCurrency(cartTotal.shipping);
+    const totalAmount = roundCurrency(cartTotal.total);
+
     // Generate order number
     const orderNumber = this.generateOrderNumber();
 
     // Create order in transaction
-    const order = await this.prisma.$transaction(async (tx: { productVariant: { update: (arg0: { where: { id: any; }; data: { inventoryQuantity: number; }; }) => any; }; order: { create: (arg0: { data: { tenantId: string; orderNumber: string; customerEmail: string; customerName: string | undefined; customerPhone: string | undefined; totalAmount: number; shippingAddress: any; billingAddress: any; notes: string | undefined; ipAddress: string | undefined; status: string; }; }) => any; }; orderItem: { create: (arg0: { data: { orderId: any; productId: any; productVariantId: any; quantity: any; price: any; productName: any; variantName: any; }; }) => any; }; cartItem: { deleteMany: (arg0: { where: { cartId: string; }; }) => any; }; }) => {
+    const order = await this.prisma.$transaction(async (tx: any) => {
       // Update inventory for variants
       for (const check of inventoryChecks) {
         await tx.productVariant.update({
@@ -156,7 +163,7 @@ export class OrderService {
         });
       }
 
-      // Create order
+      // Create order with all breakdown fields
       const order = await tx.order.create({
         data: {
           tenantId,
@@ -164,6 +171,10 @@ export class OrderService {
           customerEmail: orderData.customerEmail,
           customerName: orderData.customerName,
           customerPhone: orderData.customerPhone,
+          subtotalAmount,
+          discountAmount,
+          taxAmount,
+          shippingAmount,
           totalAmount,
           shippingAddress: orderData.shippingAddress,
           billingAddress: orderData.billingAddress || orderData.shippingAddress,
@@ -175,8 +186,8 @@ export class OrderService {
 
       // Create order items
       const orderItems: any[] = [];
-      for (const item of cart.cartItems) {
-        const price = item.productVariant?.price || item.product.price;
+      for (const item of updatedCart.cartItems) {
+        const price = Number(item.productVariant?.price || item.product.price);
         
         const orderItem = await tx.orderItem.create({
           data: {
@@ -428,7 +439,7 @@ export class OrderService {
         delivered: deliveredOrders,
         cancelled: cancelledOrders,
       },
-      totalRevenue: totalRevenue._sum.totalAmount || 0,
+      totalRevenue: Number(totalRevenue._sum.totalAmount || 0),
       recentActivity: {
         today: todayOrders,
         last7Days: weekOrders,

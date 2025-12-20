@@ -7,6 +7,7 @@ import {
   Query,
   Request,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { WalletService } from './wallet.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -94,12 +95,32 @@ export class WalletController {
 
   @Get('admin/pending-topups')
   async getPendingTopUps(@Request() req: any) {
-    return this.walletService.getPendingTopUpRequests(req.tenantId);
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
+    return this.walletService.getPendingTopUpRequests(tenantId);
   }
 
   @Post('admin/topup/:id/approve')
   async approveTopUp(@Request() req: any, @Param('id') id: string) {
-    return this.walletService.approveTopUpRequest(id, req.user.userId);
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const userId = req.user.userId || req.user.id;
+    if (!userId) {
+      throw new BadRequestException('User ID not found');
+    }
+    
+    return this.walletService.approveTopUpRequest(id, userId);
   }
 
   @Post('admin/topup/:id/reject')
@@ -108,7 +129,16 @@ export class WalletController {
     @Param('id') id: string,
     @Body() body: { reason: string },
   ) {
-    return this.walletService.rejectTopUpRequest(id, req.user.userId, body.reason);
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const userId = req.user.userId || req.user.id;
+    if (!userId) {
+      throw new BadRequestException('User ID not found');
+    }
+    
+    return this.walletService.rejectTopUpRequest(id, userId, body.reason);
   }
 }
 

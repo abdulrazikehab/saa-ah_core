@@ -12,6 +12,8 @@ import { DomainModule } from '../domain/domain.module';
 import { AuthModule } from '../auth/auth.module'; // Add this
 import { PageModule } from '../page/page.module';
 import { TemplateModule } from '../template/template.module';
+import { UserModule } from '../user/user.module';
+import { MerchantModule } from '../merchant/merchant.module';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { TemplateModule } from '../template/template.module';
     ConfigModule,
     DomainModule,
     AuthModule, // Add AuthModule // Add this to make DomainService available
+    UserModule,
+    MerchantModule,
     forwardRef(() => PageModule),
     forwardRef(() => TemplateModule),
   ],

@@ -291,4 +291,114 @@ export class UserService {
       throw error;
     }
   }
+
+  /**
+   * Ensure user exists in core database (sync from auth database)
+   * This is needed because users are created in auth database but merchants need them in core database
+   */
+  async ensureUserExists(userId: string, userData: { email: string; name?: string; role?: string; tenantId?: string }): Promise<any> {
+    try {
+      // Check if user already exists
+      let user = await this.prisma.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (user) {
+        // Update user if data changed
+        const updateData: any = {};
+        if (userData.email && user.email !== userData.email) updateData.email = userData.email;
+        if (userData.name && user.name !== userData.name) updateData.name = userData.name;
+        if (userData.role && user.role !== userData.role) updateData.role = userData.role as any;
+        
+        // Only update tenantId if tenant exists (to avoid foreign key constraint)
+        if (userData.tenantId && user.tenantId !== userData.tenantId) {
+          // Retry check up to 3 times with small delay (handles potential transaction timing issues)
+          let tenantExists = null;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            tenantExists = await this.prisma.tenant.findUnique({
+              where: { id: userData.tenantId },
+            });
+            if (tenantExists) break;
+            if (attempt < 2) {
+              // Wait 100ms before retry (only if not last attempt)
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+          }
+          
+          if (tenantExists) {
+            updateData.tenantId = userData.tenantId;
+          } else {
+            this.logger.warn(`Tenant ${userData.tenantId} does not exist after retries, skipping tenantId update for user ${userId}`);
+          }
+        }
+
+        if (Object.keys(updateData).length > 0) {
+          user = await this.prisma.user.update({
+            where: { id: userId },
+            data: updateData,
+          });
+          this.logger.log(`Updated user ${userId} in core database`);
+        }
+        return user;
+      }
+
+      // Create user if doesn't exist
+      // Note: We don't have password in core database, it's only in auth database
+      // Don't set tenantId initially to avoid foreign key constraint issues
+      // We'll update it after tenant is confirmed to exist
+      const createData: any = {
+        id: userId,
+        email: userData.email,
+        name: userData.name,
+        password: 'SYNCED_FROM_AUTH', // Placeholder - password is only in auth DB
+        role: (userData.role as any) || 'SHOP_OWNER',
+      };
+
+      // Only set tenantId if tenant exists (to avoid foreign key constraint)
+      if (userData.tenantId) {
+        const tenantExists = await this.prisma.tenant.findUnique({
+          where: { id: userData.tenantId },
+        });
+        if (tenantExists) {
+          createData.tenantId = userData.tenantId;
+        } else {
+          this.logger.warn(`Tenant ${userData.tenantId} does not exist yet, creating user without tenantId`);
+        }
+      }
+
+      user = await this.prisma.user.create({
+        data: createData,
+      });
+
+      // If tenantId was provided but not set, update it now (tenant might have been created in parallel)
+      if (userData.tenantId && !user.tenantId) {
+        try {
+          const tenantExists = await this.prisma.tenant.findUnique({
+            where: { id: userData.tenantId },
+          });
+          if (tenantExists) {
+            user = await this.prisma.user.update({
+              where: { id: userId },
+              data: { tenantId: userData.tenantId },
+            });
+            this.logger.log(`Updated user ${userId} with tenantId ${userData.tenantId}`);
+          }
+        } catch (updateError) {
+          // Non-fatal - user is created, tenantId can be updated later
+          this.logger.warn(`Could not update tenantId for user ${userId}: ${updateError}`);
+        }
+      }
+
+      this.logger.log(`Created user ${userId} in core database (synced from auth)`);
+      return user;
+    } catch (error: any) {
+      // If unique constraint error, user might have been created by another request
+      if (error?.code === 'P2002') {
+        this.logger.log(`User ${userId} was created by another request`);
+        return await this.prisma.user.findUnique({ where: { id: userId } });
+      }
+      this.logger.error(`Error ensuring user exists: ${error}`);
+      throw error;
+    }
+  }
 }

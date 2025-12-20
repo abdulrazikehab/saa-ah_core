@@ -18,16 +18,45 @@ export class ProductService {
    * Generate a SKU based on product name and tenant.
    *
    * Rules:
-   * - Prefix = first two alphanumeric characters of the English name (lowercase),
+   * - Prefix = first two letters of first two words of the English name (lowercase),
    *   fallback to 'pr' if not available.
+   * - If word has only one letter, take that letter. If word has 2+ letters, take first 2 letters.
    * - Suffix = 3‑digit sequence per tenant+prefix (001, 002, 003, ...).
    * - Ensures uniqueness per tenant by always picking the next available number.
+   * 
+   * Example: "Product Name" -> "pron001", "pron002", etc.
+   * Example: "Product" -> "pr001" (single word, first 2 chars)
+   * Example: "A B" -> "ab001" (two single-letter words)
    */
   private async generateSku(tenantId: string, name: string): Promise<string> {
     const rawName = (name || '').trim().toLowerCase();
-    const alnum = rawName.replace(/[^a-z0-9]+/g, '');
-    const base = alnum || 'pr';
-    const prefix = base.substring(0, 2).padEnd(2, 'x'); // always 2 chars
+    
+    // Extract first two words
+    const words = rawName.split(/\s+/).filter(w => w.length > 0);
+    let prefix = 'pr'; // default fallback
+    
+    if (words.length >= 2) {
+      // Use first letter of first two words (as per user requirement: "wx pu001" pattern)
+      const firstWord = words[0].replace(/[^a-z0-9]/g, '');
+      const secondWord = words[1].replace(/[^a-z0-9]/g, '');
+      
+      const firstChar = firstWord.charAt(0) || '';
+      const secondChar = secondWord.charAt(0) || '';
+      
+      if (firstChar && secondChar) {
+        prefix = firstChar + secondChar;
+      } else if (firstChar) {
+        prefix = firstChar + 'x';
+      }
+    } else if (words.length === 1) {
+      // If only one word, use first two characters
+      const word = words[0].replace(/[^a-z0-9]/g, '');
+      if (word.length >= 2) {
+        prefix = word.substring(0, 2);
+      } else if (word.length === 1) {
+        prefix = word + 'x';
+      }
+    }
 
     // Find the last SKU for this tenant + prefix, ordered descending
     const lastWithPrefix = await this.prisma.product.findFirst({

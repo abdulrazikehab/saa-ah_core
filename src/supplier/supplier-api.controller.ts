@@ -6,6 +6,8 @@ import {
   Body,
   UseGuards,
   Request,
+  BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthenticatedRequest } from '../types/request.types';
@@ -15,6 +17,8 @@ import { SupplierPurchaseService } from './supplier-purchase.service';
 @UseGuards(JwtAuthGuard)
 @Controller('supplier-api')
 export class SupplierApiController {
+  private readonly logger = new Logger(SupplierApiController.name);
+
   constructor(
     private readonly pricingService: SupplierPricingService,
     private readonly purchaseService: SupplierPurchaseService,
@@ -29,7 +33,17 @@ export class SupplierApiController {
     @Param('productId') productId: string,
     @Param('supplierId') supplierId: string,
   ) {
-    const tenantId = req.user?.tenantId || req.user?.id;
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
     return this.pricingService.fetchSupplierPrice(tenantId, productId, supplierId);
   }
 
@@ -41,7 +55,17 @@ export class SupplierApiController {
     @Request() req: AuthenticatedRequest,
     @Param('productId') productId: string,
   ) {
-    const tenantId = req.user?.tenantId || req.user?.id;
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
     return this.pricingService.fetchAllSupplierPrices(tenantId, productId);
   }
 
@@ -53,7 +77,17 @@ export class SupplierApiController {
     @Request() req: AuthenticatedRequest,
     @Param('productId') productId: string,
   ) {
-    const tenantId = req.user?.tenantId || req.user?.id;
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
     return this.pricingService.selectBestSupplier(tenantId, productId);
   }
 
@@ -67,7 +101,17 @@ export class SupplierApiController {
     @Param('supplierId') supplierId: string,
     @Body() body: { quantity?: number },
   ) {
-    const tenantId = req.user?.tenantId || req.user?.id;
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
     return this.purchaseService.purchaseFromSupplier(
       tenantId,
       productId,
@@ -85,7 +129,17 @@ export class SupplierApiController {
     @Param('productId') productId: string,
     @Body() body: { quantity?: number },
   ) {
-    const tenantId = req.user?.tenantId || req.user?.id;
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
     return this.purchaseService.autoPurchaseBestSupplier(
       tenantId,
       productId,
@@ -102,7 +156,17 @@ export class SupplierApiController {
     @Param('purchaseId') purchaseId: string,
     @Body() body: { reason: string },
   ) {
-    const tenantId = req.user?.tenantId || req.user?.id;
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
     return this.purchaseService.cancelPurchaseAndRefund(
       tenantId,
       purchaseId,
@@ -115,7 +179,17 @@ export class SupplierApiController {
    */
   @Post('monitor')
   async monitorPurchases(@Request() req: AuthenticatedRequest) {
-    const tenantId = req.user?.tenantId || req.user?.id;
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
     return this.purchaseService.monitorActivePurchases(tenantId);
   }
 
@@ -128,7 +202,17 @@ export class SupplierApiController {
     @Param('productId') productId: string,
     @Param('supplierId') supplierId: string,
   ) {
-    const tenantId = req.user?.tenantId || req.user?.id;
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
     return this.pricingService.shouldStopPurchase(tenantId, productId, supplierId);
   }
 
@@ -137,15 +221,38 @@ export class SupplierApiController {
    */
   @Get('purchases')
   async getPurchases(@Request() req: AuthenticatedRequest) {
-    const tenantId = req.user?.tenantId || req.user?.id;
-    if (!tenantId) {
-      throw new Error('Tenant ID is required');
-    }
     try {
+      if (!req.user) {
+        this.logger.warn('User not authenticated in getPurchases');
+        throw new BadRequestException('Authentication required. Please log in.');
+      }
+
+      // Get tenantId from multiple sources (priority: req.tenantId > user.tenantId)
+      let tenantId = req.tenantId || req.user?.tenantId;
+      
+      // Validate tenantId - reject 'default' and 'system' as invalid
+      if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+        this.logger.warn('Tenant ID missing or invalid in request', {
+          userId: req.user?.id,
+          userTenantId: req.user?.tenantId,
+          reqTenantId: req.tenantId,
+        });
+        throw new BadRequestException(
+          'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+        );
+      }
+
+      this.logger.debug(`Fetching purchases for tenant: ${tenantId}`);
       return await this.purchaseService.getPurchases(tenantId);
     } catch (error: any) {
-      console.error('Error fetching purchases:', error);
-      throw error;
+      this.logger.error('Error fetching purchases:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      // If it's a database error or other issue, re-throw with context
+      throw new BadRequestException(
+        `Failed to fetch purchases: ${error?.message || 'Unknown error'}`
+      );
     }
   }
 }

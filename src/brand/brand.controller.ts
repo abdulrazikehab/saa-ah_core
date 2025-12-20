@@ -22,7 +22,15 @@ export class BrandController {
     @Headers('x-tenant-id') tenantIdHeader?: string
   ) {
     // Support both authenticated and public access
-    const tenantId = req.user?.tenantId || req.user?.id || req.tenantId || tenantIdHeader || process.env.DEFAULT_TENANT_ID || 'default';
+    // IMPORTANT: Never fall back to user.id as tenantId – it's not a valid tenant identifier.
+    // Prefer an explicitly resolved tenantId (from middleware or header).
+    const tenantId =
+      req.tenantId ||
+      req.user?.tenantId ||
+      tenantIdHeader ||
+      process.env.DEFAULT_TENANT_ID ||
+      'default';
+
     if (!tenantId || tenantId === 'system') {
       // Return empty array if no valid tenant
       return [];

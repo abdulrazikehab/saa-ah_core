@@ -25,9 +25,13 @@ export class ReportService {
       const activity = await this.prisma.activityLog.count({
         where: { tenantId },
       });
+      
+      // Round revenue to 2 decimal places for precision
+      const roundCurrency = (value: number): number => Math.round(value * 100) / 100;
+      
       return {
         totalOrders,
-        revenue: Number(revenue._sum.totalAmount ?? 0),
+        revenue: roundCurrency(Number(revenue._sum.totalAmount ?? 0)),
         totalTransactions,
         activityCount: activity,
       };
@@ -48,34 +52,48 @@ export class ReportService {
       const products = await this.prisma.product.findMany({
         where: { tenantId },
         include: {
-          _count: {
-            select: { orderItems: true }
-          },
-          orderItems: {
-            select: {
-              quantity: true,
-              price: true
-            }
-          },
           variants: {
             select: {
               inventoryQuantity: true
+            }
+          },
+          orderItems: {
+            where: {
+              order: {
+                paymentStatus: 'SUCCEEDED' // Only count completed orders
+              }
+            },
+            select: {
+              quantity: true,
+              price: true
             }
           }
         }
       });
 
+      // Helper function to round currency to 2 decimal places
+      const roundCurrency = (value: number): number => Math.round(value * 100) / 100;
+
       return products.map((p: any) => {
         // Calculate total stock from variants (inventoryQuantity field)
         const totalStock = p.variants?.reduce((sum: number, v: any) => sum + (Number(v.inventoryQuantity || 0)), 0) || 0;
+        
+        // Calculate sales count and revenue with precision
+        const salesCount = p.orderItems.reduce((acc: number, item: any) => acc + Number(item.quantity || 0), 0);
+        const revenue = roundCurrency(
+          p.orderItems.reduce((acc: number, item: any) => {
+            const itemRevenue = Number(item.price || 0) * Number(item.quantity || 0);
+            return acc + itemRevenue;
+          }, 0)
+        );
         
         return {
           id: p.id,
           name: p.name,
           sku: p.sku,
           stock: totalStock,
-          salesCount: p.orderItems.reduce((acc: number, item: any) => acc + item.quantity, 0),
-          revenue: p.orderItems.reduce((acc: number, item: any) => acc + (Number(item.price) * item.quantity), 0)
+          salesCount,
+          revenue
         };
       }).sort((a: any, b: any) => b.revenue - a.revenue);
     } catch (error: any) {
@@ -99,11 +117,14 @@ export class ReportService {
         _sum: { totalAmount: true },
       });
 
+      // Round currency to 2 decimal places for precision
+      const roundCurrency = (value: number): number => Math.round(value * 100) / 100;
+      
       return customers.map((c: any) => ({
         email: c.customerEmail,
         name: c.customerName || 'Unknown',
         orders: c._count.id,
-        totalSpent: Number(c._sum.totalAmount ?? 0)
+        totalSpent: roundCurrency(Number(c._sum.totalAmount ?? 0))
       })).sort((a: any, b: any) => b.totalSpent - a.totalSpent);
     } catch (error: any) {
       // If tenant doesn't exist, return empty array
@@ -137,12 +158,15 @@ export class ReportService {
       });
       const currenciesUsed = currencyData.map((t: any) => t.currency || defaultCurrency).filter(Boolean);
 
+      // Round currency to 2 decimal places for precision
+      const roundCurrency = (value: number): number => Math.round(value * 100) / 100;
+      
       return payments.map((p: any) => ({
         provider: p.paymentProvider,
         transactions: p._count.id,
-        volume: Number(p._sum.amount ?? 0),
-        fees: Number(p._sum.platformFee ?? 0),
-        net: Number(p._sum.merchantEarnings ?? 0),
+        volume: roundCurrency(Number(p._sum.amount ?? 0)),
+        fees: roundCurrency(Number(p._sum.platformFee ?? 0)),
+        net: roundCurrency(Number(p._sum.merchantEarnings ?? 0)),
         currency: defaultCurrency, // Default currency for the report
         currenciesUsed, // List of all currencies used (for reference)
       }));
