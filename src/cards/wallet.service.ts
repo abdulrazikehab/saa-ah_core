@@ -1,4 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserService } from '../user/user.service';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -10,6 +12,7 @@ export class WalletService {
   constructor(
     private prisma: PrismaService,
     private userService: UserService,
+    private httpService: HttpService,
   ) {}
 
   // Get or create wallet for user
@@ -311,7 +314,7 @@ export class WalletService {
   }
 
   // Approve top-up request (admin action)
-  async approveTopUpRequest(requestId: string, processedByUserId: string) {
+  async approveTopUpRequest(requestId: string, processedByUserId: string, authToken: string, tenantId: string) {
     const request = await this.prisma.walletTopUpRequest.findUnique({
       where: { id: requestId },
     });
@@ -324,9 +327,14 @@ export class WalletService {
       throw new BadRequestException('Request is not pending');
     }
 
-    // Credit wallet and update request
+    // IMPORTANT: Credit wallet to the user who requested the top-up (request.userId)
+    // NOT the admin who approves it (processedByUserId)
+    // The admin is just approving the request, the money should go to the requester
+    this.logger.log(`Approving top-up request ${requestId}: Adding ${request.amount} to user ${request.userId} (processed by admin ${processedByUserId})`);
+    
+    // Credit wallet and update request first (this is the primary operation)
     const { wallet, transaction } = await this.credit(
-      request.userId,
+      request.userId, // Add balance to the user who requested the top-up
       Number(request.amount),
       `Wallet top-up approved`,
       `تم شحن الرصيد`,
@@ -334,13 +342,16 @@ export class WalletService {
       'TOPUP',
     );
 
+    // Verify the balance was added correctly
+    this.logger.log(`Wallet credited successfully. User ${request.userId} new balance: ${wallet.balance}`);
+
     // Update request status
     const updatedRequest = await this.prisma.walletTopUpRequest.update({
       where: { id: requestId },
       data: {
         status: 'APPROVED',
         processedAt: new Date(),
-        processedByUserId,
+        processedByUserId, // This is just for tracking who approved it
       },
     });
 
@@ -350,13 +361,17 @@ export class WalletService {
       data: { topUpRequestId: requestId },
     });
 
-    this.logger.log(`Approved top-up request ${requestId}`);
+    this.logger.log(`Approved top-up request ${requestId} and credited ${request.amount} to wallet of user ${request.userId}`);
 
-    return { request: updatedRequest, wallet };
+    // DO NOT call external API again - it would cause duplicate processing
+    // The external API call should only happen from the frontend/merchant API
+    // If we're being called from merchant API, we don't need to call it back
+
+    return { request: updatedRequest, wallet, transaction };
   }
 
   // Reject top-up request (admin action)
-  async rejectTopUpRequest(requestId: string, processedByUserId: string, reason: string) {
+  async rejectTopUpRequest(requestId: string, processedByUserId: string, reason: string, authToken: string, tenantId: string) {
     const request = await this.prisma.walletTopUpRequest.findUnique({
       where: { id: requestId },
     });
@@ -381,6 +396,31 @@ export class WalletService {
 
     this.logger.log(`Rejected top-up request ${requestId}: ${reason}`);
 
+    // Call external API to reject top-up (non-blocking - for notification/audit purposes)
+    const baseUrl = process.env.MERCHANT_API_URL;
+    if (baseUrl && baseUrl !== 'http://localhost:3002') {
+      try {
+        const apiUrl = `${baseUrl}/api/merchant/wallet/admin/topup/${requestId}/reject`;
+        this.logger.log(`Calling external API to notify rejection: ${apiUrl}`);
+        
+        await firstValueFrom(
+          this.httpService.post(apiUrl, { reason }, {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+              'X-Tenant-ID': tenantId,
+              'Content-Type': 'application/json',
+            },
+            timeout: 5000,
+          })
+        );
+        
+        this.logger.log(`External API notified of top-up rejection ${requestId}`);
+      } catch (error: any) {
+        // Log error but don't fail - rejection is already processed
+        this.logger.warn(`Failed to notify external API of top-up rejection ${requestId}:`, error?.response?.data || error?.message);
+      }
+    }
+
     return updatedRequest;
   }
 
@@ -392,6 +432,130 @@ export class WalletService {
         isActive: true,
       },
       orderBy: { sortOrder: 'asc' },
+    });
+  }
+
+  // Get all banks (including inactive) for merchant management
+  async getAllBanks(tenantId: string) {
+    return this.prisma.bank.findMany({
+      where: { tenantId },
+      orderBy: { sortOrder: 'asc' },
+    });
+  }
+
+  // Create merchant bank
+  async createBank(
+    tenantId: string,
+    data: {
+      name: string;
+      nameAr?: string;
+      code: string;
+      logo?: string;
+      accountName: string;
+      accountNumber: string;
+      iban: string;
+      swiftCode?: string;
+      isActive?: boolean;
+      sortOrder?: number;
+    },
+  ) {
+    // Check if code already exists for this tenant
+    const existing = await this.prisma.bank.findUnique({
+      where: {
+        tenantId_code: {
+          tenantId,
+          code: data.code,
+        },
+      },
+    });
+
+    if (existing) {
+      throw new BadRequestException(`Bank with code ${data.code} already exists`);
+    }
+
+    return this.prisma.bank.create({
+      data: {
+        tenantId,
+        ...data,
+        isActive: data.isActive ?? true,
+        sortOrder: data.sortOrder ?? 0,
+      },
+    });
+  }
+
+  // Update merchant bank
+  async updateBank(
+    tenantId: string,
+    bankId: string,
+    data: {
+      name?: string;
+      nameAr?: string;
+      code?: string;
+      logo?: string;
+      accountName?: string;
+      accountNumber?: string;
+      iban?: string;
+      swiftCode?: string;
+      isActive?: boolean;
+      sortOrder?: number;
+    },
+  ) {
+    // Check if bank exists and belongs to tenant
+    const bank = await this.prisma.bank.findFirst({
+      where: { id: bankId, tenantId },
+    });
+
+    if (!bank) {
+      throw new NotFoundException('Bank not found');
+    }
+
+    // If code is being updated, check for conflicts
+    if (data.code && data.code !== bank.code) {
+      const existing = await this.prisma.bank.findUnique({
+        where: {
+          tenantId_code: {
+            tenantId,
+            code: data.code,
+          },
+        },
+      });
+
+      if (existing) {
+        throw new BadRequestException(`Bank with code ${data.code} already exists`);
+      }
+    }
+
+    return this.prisma.bank.update({
+      where: { id: bankId },
+      data,
+    });
+  }
+
+  // Delete merchant bank
+  async deleteBank(tenantId: string, bankId: string) {
+    const bank = await this.prisma.bank.findFirst({
+      where: { id: bankId, tenantId },
+    });
+
+    if (!bank) {
+      throw new NotFoundException('Bank not found');
+    }
+
+    // Check if bank is being used in any top-up requests
+    const topUpCount = await this.prisma.walletTopUpRequest.count({
+      where: { bankId },
+    });
+
+    if (topUpCount > 0) {
+      // Instead of deleting, deactivate it
+      return this.prisma.bank.update({
+        where: { id: bankId },
+        data: { isActive: false },
+      });
+    }
+
+    return this.prisma.bank.delete({
+      where: { id: bankId },
     });
   }
 

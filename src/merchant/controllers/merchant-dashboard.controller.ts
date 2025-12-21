@@ -65,6 +65,20 @@ export class MerchantDashboardController {
     });
   }
 
+  @Get('reports/top-selling-products')
+  async getTopSellingProducts(
+    @Request() req: any,
+    @Query() query: ReportDateRangeQuery & { limit?: string },
+  ) {
+    const userId = req.user.id || req.user.userId;
+    const context = await this.merchantService.validateMerchantAccess(userId, 'reportsRead');
+
+    return this.reportService.getTopSellingProducts(context.merchantId, {
+      ...query,
+      limit: query.limit ? parseInt(query.limit) : undefined,
+    });
+  }
+
   @Get('reports/price-changes')
   async getPriceChangesReport(
     @Request() req: any,

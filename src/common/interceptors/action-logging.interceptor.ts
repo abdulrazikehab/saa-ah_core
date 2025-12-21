@@ -20,7 +20,7 @@ export class ActionLoggingInterceptor implements NestInterceptor {
     const userAgent = request.headers['user-agent'];
 
     // Skip logging for certain endpoints
-    const skipPaths = ['/api/health', '/api/admin/master', '/api/activity-logs'];
+    const skipPaths = ['/api/health', '/api/admin/master', '/api/activity-log'];
     if (skipPaths.some(path => url.includes(path))) {
       return next.handle();
     }

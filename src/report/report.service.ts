@@ -178,4 +178,76 @@ export class ReportService {
       throw error;
     }
   }
+
+  async getSalesReport(tenantId: string, startDate?: Date, endDate?: Date) {
+    if (!tenantId) {
+      return {
+        totalSales: 0,
+        totalOrders: 0,
+        averageOrderValue: 0,
+        byDate: [],
+      };
+    }
+    try {
+      const where: any = {
+        tenantId,
+        paymentStatus: 'SUCCEEDED',
+      };
+
+      if (startDate || endDate) {
+        where.createdAt = {};
+        if (startDate) where.createdAt.gte = startDate;
+        if (endDate) where.createdAt.lte = endDate;
+      }
+
+      const orders = await this.prisma.order.findMany({
+        where,
+        select: {
+          totalAmount: true,
+          createdAt: true,
+        },
+      });
+
+      const totalSales = orders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+      const totalOrders = orders.length;
+      const averageOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
+
+      // Group by date
+      const byDateMap = new Map<string, { count: number; amount: number }>();
+      orders.forEach((order: any) => {
+        const dateKey = order.createdAt.toISOString().split('T')[0];
+        const existing = byDateMap.get(dateKey) || { count: 0, amount: 0 };
+        existing.count += 1;
+        existing.amount += Number(order.totalAmount || 0);
+        byDateMap.set(dateKey, existing);
+      });
+
+      const byDate = Array.from(byDateMap.entries())
+        .map(([date, data]) => ({
+          date,
+          count: data.count,
+          amount: Number(data.amount.toFixed(2)),
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      const roundCurrency = (value: number): number => Math.round(value * 100) / 100;
+
+      return {
+        totalSales: roundCurrency(totalSales),
+        totalOrders,
+        averageOrderValue: roundCurrency(averageOrderValue),
+        byDate,
+      };
+    } catch (error: any) {
+      if (error?.code === 'P2003' || error?.message?.includes('Foreign key constraint')) {
+        return {
+          totalSales: 0,
+          totalOrders: 0,
+          averageOrderValue: 0,
+          byDate: [],
+        };
+      }
+      throw error;
+    }
+  }
 }

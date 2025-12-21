@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios';
 import { PrismaModule } from '../prisma/prisma.module';
 import { UserModule } from '../user/user.module';
 import { CardProductService } from './card-product.service';
@@ -13,7 +14,7 @@ import { FavoritesService } from './favorites.service';
 import { FavoritesController } from './favorites.controller';
 
 @Module({
-  imports: [PrismaModule, UserModule],
+  imports: [PrismaModule, UserModule, HttpModule],
   controllers: [
     CardProductController,
     CardInventoryController,

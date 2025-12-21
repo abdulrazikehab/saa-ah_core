@@ -418,7 +418,7 @@ export class MerchantOrderService {
 
   // Get orders list
   async getOrders(merchantId: string, query: OrderListQuery) {
-    const limit = query.limit || 20;
+    const limit = query.limit ? Number(query.limit) : 20;
     const where: any = { merchantId };
 
     if (query.status) where.status = query.status;

@@ -20,14 +20,32 @@ export class AnalyticsService {
       },
     });
 
-    const pendingOrders = await this.prisma.order.count({
-      where: { tenantId, status: 'PENDING' },
+    const totalRevenue = Number(revenue._sum.totalAmount) || 0;
+    const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+    // Count orders by status
+    const ordersByStatus = await this.prisma.order.groupBy({
+      by: ['status'],
+      where: { tenantId },
+      _count: { id: true },
+    });
+
+    const ordersByStatusMap: Record<string, number> = {};
+    ordersByStatus.forEach((group: any) => {
+      ordersByStatusMap[group.status] = group._count.id;
     });
 
     return {
       totalOrders,
-      totalRevenue: Number(revenue._sum.totalAmount) || 0,
-      pendingOrders,
+      totalRevenue,
+      averageOrderValue: Number(averageOrderValue.toFixed(2)),
+      ordersByStatus: {
+        PENDING: ordersByStatusMap.PENDING || 0,
+        PROCESSING: ordersByStatusMap.PROCESSING || 0,
+        SHIPPED: ordersByStatusMap.SHIPPED || 0,
+        DELIVERED: ordersByStatusMap.DELIVERED || 0,
+        CANCELLED: ordersByStatusMap.CANCELLED || 0,
+      },
     };
   }
 
@@ -65,6 +83,50 @@ export class AnalyticsService {
   async getTrafficStats(tenantId: string) {
     // Placeholder for now as we don't track page views in DB yet
     // Could be implemented with Redis or a separate analytics table
-    return { visits: 0, uniqueVisitors: 0 };
+    return {
+      totalVisits: 0,
+      uniqueVisitors: 0,
+      pageViews: 0,
+      bounceRate: 0,
+      averageSessionDuration: 0,
+    };
+  }
+
+  async getCustomerStats(tenantId: string) {
+    // Count unique customers from orders
+    const uniqueCustomers = await this.prisma.order.groupBy({
+      by: ['customerEmail'],
+      where: { tenantId },
+    });
+
+    return {
+      totalCustomers: uniqueCustomers.length,
+      newCustomers: 0, // Could be calculated based on first order date
+    };
+  }
+
+  async getRevenueStats(tenantId: string) {
+    const revenue = await this.prisma.order.aggregate({
+      where: { 
+        tenantId,
+        paymentStatus: 'SUCCEEDED'
+      },
+      _sum: {
+        totalAmount: true,
+      },
+    });
+
+    const totalOrders = await this.prisma.order.count({
+      where: { 
+        tenantId,
+        paymentStatus: 'SUCCEEDED'
+      },
+    });
+
+    return {
+      totalRevenue: Number(revenue._sum.totalAmount) || 0,
+      totalOrders,
+      averageOrderValue: totalOrders > 0 ? (Number(revenue._sum.totalAmount) || 0) / totalOrders : 0,
+    };
   }
 }

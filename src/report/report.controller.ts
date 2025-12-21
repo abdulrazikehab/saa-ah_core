@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Query,
   UseGuards,
   Request,
 } from '@nestjs/common';
@@ -46,5 +47,25 @@ export class ReportController {
       return [];
     }
     return this.reports.getPaymentReport(tenantId);
+  }
+
+  @Get('sales')
+  async getSalesReport(
+    @Request() req: any,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const tenantId = req.user?.tenantId || req.user?.id || req.tenantId;
+    if (!tenantId) {
+      return {
+        totalSales: 0,
+        totalOrders: 0,
+        averageOrderValue: 0,
+        byDate: [],
+      };
+    }
+    const start = startDate ? new Date(startDate) : undefined;
+    const end = endDate ? new Date(endDate) : undefined;
+    return this.reports.getSalesReport(tenantId, start, end);
   }
 }

@@ -254,6 +254,49 @@ export class MerchantReportService {
     };
   }
 
+  // Top selling products (ordered by quantity)
+  async getTopSellingProducts(merchantId: string, query: ReportDateRangeQuery & { limit?: number }) {
+    const { from, to } = this.getDateRange(query);
+    const limit = query.limit || 10;
+
+    const topProducts = await this.prisma.merchantOrderItem.groupBy({
+      by: ['productId'],
+      where: {
+        order: {
+          merchantId,
+          status: 'COMPLETED',
+          createdAt: { gte: from, lte: to },
+        },
+      },
+      _sum: { quantity: true, lineTotal: true, lineProfit: true },
+      orderBy: { _sum: { quantity: 'desc' } },
+      take: limit,
+    });
+
+    const productIds = topProducts.map((p: any) => p.productId);
+    const products = await this.prisma.cardProduct.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, name: true, nameAr: true, image: true },
+    });
+
+    const productMap = new Map(products.map((p: any) => [p.id, p]));
+
+    return {
+      products: topProducts.map((tp: any) => {
+        const product = productMap.get(tp.productId) as { name?: string; nameAr?: string; image?: string } | undefined;
+        return {
+          productId: tp.productId,
+          name: product?.name || 'Unknown',
+          nameAr: product?.nameAr,
+          image: product?.image,
+          qty: tp._sum.quantity || 0,
+          revenue: Number(tp._sum.lineTotal || 0),
+          profit: Number(tp._sum.lineProfit || 0),
+        };
+      }),
+    };
+  }
+
   // Price changes report
   async getPriceChangesReport(merchantId: string, query: { productId?: string; from?: string; to?: string }) {
     const where: any = {};

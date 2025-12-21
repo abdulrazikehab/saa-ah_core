@@ -120,7 +120,20 @@ export class WalletController {
       throw new BadRequestException('User ID not found');
     }
     
-    return this.walletService.approveTopUpRequest(id, userId);
+    // Get auth token from headers
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw new BadRequestException('Authorization header is required');
+    }
+    const authToken = authHeader.substring(7);
+    
+    // Get tenant ID
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID not found');
+    }
+    
+    return this.walletService.approveTopUpRequest(id, userId, authToken, tenantId);
   }
 
   @Post('admin/topup/:id/reject')
@@ -138,7 +151,20 @@ export class WalletController {
       throw new BadRequestException('User ID not found');
     }
     
-    return this.walletService.rejectTopUpRequest(id, userId, body.reason);
+    // Get auth token from headers
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw new BadRequestException('Authorization header is required');
+    }
+    const authToken = authHeader.substring(7);
+    
+    // Get tenant ID
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID not found');
+    }
+    
+    return this.walletService.rejectTopUpRequest(id, userId, body.reason, authToken, tenantId);
   }
 }
 
