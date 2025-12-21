@@ -118,7 +118,7 @@ export class ProductService {
     throw new ForbiddenException(`Cannot create product: Failed to verify tenant. Please try again or contact support.`);
   }
 
-  const { variants, images, categoryIds, suppliers, supplierIds, ...productData } = createProductDto;
+  const { variants, images, categoryIds, suppliers, supplierIds, tags, ...productData } = createProductDto;
 
   // Auto-generate SKU if not provided
   if (!productData.sku || !productData.sku.trim()) {
@@ -221,6 +221,52 @@ export class ProductService {
     }));
   }
 
+  // Process tags: create or find ProductTag records and prepare tagItems
+  let tagItemsData: Array<{ tagId: string }> = [];
+  if (tags && tags.length > 0) {
+    this.logger.log(`🏷️ Processing tags: ${tags.join(', ')}`);
+    
+    // Helper function to create slug from tag name
+    const createSlug = (name: string): string => {
+      return name
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-');
+    };
+
+    for (const tagName of tags) {
+      if (!tagName || !tagName.trim()) continue;
+      
+      const tagSlug = createSlug(tagName);
+      
+      // Find or create ProductTag
+      let productTag = await this.prisma.productTag.findUnique({
+        where: {
+          tenantId_slug: {
+            tenantId,
+            slug: tagSlug,
+          },
+        },
+      });
+
+      if (!productTag) {
+        // Create new tag
+        productTag = await this.prisma.productTag.create({
+          data: {
+            tenantId,
+            name: tagName.trim(),
+            slug: tagSlug,
+          },
+        });
+        this.logger.log(`✅ Created new tag: ${productTag.name} (${productTag.slug})`);
+      }
+
+      tagItemsData.push({ tagId: productTag.id });
+    }
+  }
+
   try {
     this.logger.log(`📦 Creating product in database...`);
     
@@ -259,6 +305,12 @@ export class ProductService {
         }),
         // Connect unit if provided
         ...(productData.unitId && { unitId: productData.unitId }),
+        // Connect tags through tagItems relationship
+        ...(tagItemsData.length > 0 && {
+          tagItems: {
+            create: tagItemsData,
+          },
+        }),
       },
       include: (() => {
         const includeObj: any = {
@@ -293,11 +345,18 @@ export class ProductService {
       }
     }
     
-    // Always try to include unit
-    includeObj.unit = true;
-    
-    return includeObj;
-  })(),
+        // Always try to include unit
+        includeObj.unit = true;
+        
+        // Include tags
+        includeObj.tagItems = {
+          include: {
+            tag: true,
+          },
+        };
+        
+        return includeObj;
+      })(),
     });
 
     this.logger.log(`✅ Product created successfully: ${product.id}`);
@@ -645,7 +704,7 @@ export class ProductService {
       throw new NotFoundException('Product not found');
     }
 
-    const { variants, images, categoryIds, ...productData } = updateProductDto;
+    const { variants, images, categoryIds, tags, ...productData } = updateProductDto;
 
     // Check SKU uniqueness if provided
     if (productData.sku && productData.sku !== existingProduct.sku) {
@@ -679,6 +738,55 @@ export class ProductService {
         const invalidCategories = categoryIds.filter(id => !validCategoryIds.includes(id));
         this.logger.warn(`⚠️ Update product: Some categories do not exist or don't belong to tenant: ${invalidCategories.join(', ')}`);
       }
+    }
+
+    // Process tags: create or find ProductTag records and prepare tagItems
+    let tagItemsData: Array<{ tagId: string }> = [];
+    if (tags !== undefined) {
+      if (tags.length > 0) {
+        this.logger.log(`🏷️ Processing tags for update: ${tags.join(', ')}`);
+        
+        // Helper function to create slug from tag name
+        const createSlug = (name: string): string => {
+          return name
+            .toLowerCase()
+            .trim()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-');
+        };
+
+        for (const tagName of tags) {
+          if (!tagName || !tagName.trim()) continue;
+          
+          const tagSlug = createSlug(tagName);
+          
+          // Find or create ProductTag
+          let productTag = await this.prisma.productTag.findUnique({
+            where: {
+              tenantId_slug: {
+                tenantId,
+                slug: tagSlug,
+              },
+            },
+          });
+
+          if (!productTag) {
+            // Create new tag
+            productTag = await this.prisma.productTag.create({
+              data: {
+                tenantId,
+                name: tagName.trim(),
+                slug: tagSlug,
+              },
+            });
+            this.logger.log(`✅ Created new tag: ${productTag.name} (${productTag.slug})`);
+          }
+
+          tagItemsData.push({ tagId: productTag.id });
+        }
+      }
+      // If tags is an empty array, tagItemsData will remain empty, which will clear all tags
     }
 
     try {
@@ -718,6 +826,15 @@ export class ProductService {
               }),
             },
           }),
+          // Always update tags if provided (even if empty array to clear tags)
+          ...(tags !== undefined && {
+            tagItems: {
+              deleteMany: {}, // Remove existing tags
+              ...(tagItemsData.length > 0 && {
+                create: tagItemsData,
+              }),
+            },
+          }),
         },
         include: {
           variants: true,
@@ -729,6 +846,11 @@ export class ProductService {
           categories: {
             include: {
               category: true,
+            },
+          },
+          tagItems: {
+            include: {
+              tag: true,
             },
           },
         },
@@ -956,6 +1078,40 @@ export class ProductService {
       featured: product.featured,
       weight: product.weight ? Number(product.weight) : undefined,
       dimensions: product.dimensions,
+      coinsNumber: product.coinsNumber,
+      notify: product.notify,
+      min: product.min,
+      max: product.max,
+      webStatus: product.webStatus,
+      mobileStatus: product.mobileStatus,
+      purpleCardsProductNameAr: product.purpleCardsProductNameAr,
+      purpleCardsProductNameEn: product.purpleCardsProductNameEn,
+      purpleCardsSlugAr: product.purpleCardsSlugAr,
+      purpleCardsSlugEn: product.purpleCardsSlugEn,
+      purpleCardsDescAr: product.purpleCardsDescAr,
+      purpleCardsDescEn: product.purpleCardsDescEn,
+      purpleCardsLongDescAr: product.purpleCardsLongDescAr,
+      purpleCardsLongDescEn: product.purpleCardsLongDescEn,
+      purpleCardsMetaTitleAr: product.purpleCardsMetaTitleAr,
+      purpleCardsMetaTitleEn: product.purpleCardsMetaTitleEn,
+      purpleCardsMetaKeywordAr: product.purpleCardsMetaKeywordAr,
+      purpleCardsMetaKeywordEn: product.purpleCardsMetaKeywordEn,
+      purpleCardsMetaDescriptionAr: product.purpleCardsMetaDescriptionAr,
+      purpleCardsMetaDescriptionEn: product.purpleCardsMetaDescriptionEn,
+      ish7enProductNameAr: product.ish7enProductNameAr,
+      ish7enProductNameEn: product.ish7enProductNameEn,
+      ish7enSlugAr: product.ish7enSlugAr,
+      ish7enSlugEn: product.ish7enSlugEn,
+      ish7enDescAr: product.ish7enDescAr,
+      ish7enDescEn: product.ish7enDescEn,
+      ish7enLongDescAr: product.ish7enLongDescAr,
+      ish7enLongDescEn: product.ish7enLongDescEn,
+      ish7enMetaTitleAr: product.ish7enMetaTitleAr,
+      ish7enMetaTitleEn: product.ish7enMetaTitleEn,
+      ish7enMetaKeywordAr: product.ish7enMetaKeywordAr,
+      ish7enMetaKeywordEn: product.ish7enMetaKeywordEn,
+      ish7enMetaDescriptionAr: product.ish7enMetaDescriptionAr,
+      ish7enMetaDescriptionEn: product.ish7enMetaDescriptionEn,
       createdAt: product.createdAt,
       updatedAt: product.updatedAt,
       variants: product.variants?.map((variant: any) => ({

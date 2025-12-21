@@ -75,5 +75,68 @@ export class AuthClientService {
       throw error;
     }
   }
+
+  async getUserMarkets(userId: string, accessToken: string): Promise<Array<{ id: string; name: string; subdomain: string; plan: string; status: string; createdAt: string; isOwner: boolean; isActive: boolean }>> {
+    try {
+      const response = await fetch(`${this.authServiceUrl}/auth/markets`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Auth service returned ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      this.logger.error(`Failed to get markets for user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  async deleteTenant(tenantId: string, accessToken: string): Promise<void> {
+    try {
+      const response = await fetch(`${this.authServiceUrl}/auth/markets/${tenantId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        let errorMessage = `Auth service returned ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch {
+          // If JSON parsing fails, try text
+          try {
+            const errorText = await response.text();
+            if (errorText) errorMessage = errorText;
+          } catch {
+            // Ignore if text parsing also fails
+          }
+        }
+        
+        // Preserve status code information in error message
+        if (response.status === 401) {
+          throw new Error(`Authentication failed: ${errorMessage}`);
+        } else if (response.status === 403) {
+          throw new Error(`Permission denied: ${errorMessage}`);
+        } else if (response.status === 404) {
+          throw new Error(`Market not found: ${errorMessage}`);
+        } else {
+          throw new Error(`Failed to delete tenant: ${errorMessage}`);
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Failed to delete tenant ${tenantId}:`, error);
+      throw error;
+    }
+  }
 }
 

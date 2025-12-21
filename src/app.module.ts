@@ -23,6 +23,7 @@ import { CheckoutModule } from './checkout/checkout.module';
 import { CollectionModule } from './collection/collection.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { UploadModule } from './upload/upload.module';
+import { MediaModule } from './media/media.module';
 import { RedisModule } from './redis/redis.module';
 import { FraudModule } from './fraud/fraud.module';
 import { FraudGuardMiddleware } from './fraud/fraud-guard.middleware';
@@ -101,6 +102,7 @@ import { ApiKeyModule } from './api-key/api-key.module';
     CollectionModule,
     CloudinaryModule,   
     UploadModule,      
+    MediaModule,      
     RedisModule,
     FraudModule,
     SeoModule,

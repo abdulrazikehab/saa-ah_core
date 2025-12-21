@@ -35,26 +35,8 @@ export class AdminApiKeyGuard implements CanActivate {
       return this.cachedApiKey;
     }
 
-    try {
-      // Try to get from database
-      const systemConfig = await this.prisma.siteConfig.findUnique({
-        where: { tenantId: 'system' },
-        select: { settings: true },
-      });
-
-      if (systemConfig?.settings && typeof systemConfig.settings === 'object') {
-        const settings = systemConfig.settings as any;
-        if (settings.adminApiKey) {
-          this.cachedApiKey = settings.adminApiKey;
-          this.cacheExpiry = now + this.CACHE_TTL;
-          return this.cachedApiKey;
-        }
-      }
-    } catch (error) {
-      // Fall through to environment variable
-    }
-
-    // Fallback to environment variable
+    // Get API key from environment variable
+    // Note: SiteConfig model doesn't have a 'settings' field, so we use environment variable directly
     const envKey = process.env.ADMIN_API_KEY || 'Saeaa2025Admin!';
     this.cachedApiKey = envKey;
     this.cacheExpiry = now + this.CACHE_TTL;

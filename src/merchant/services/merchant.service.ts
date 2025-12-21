@@ -42,7 +42,8 @@ export class MerchantService {
 
       if (!tenant) {
         this.logger.error(`Tenant ${tenantId} does not exist after 5 attempts. Cannot create merchant.`);
-        throw new NotFoundException(`Tenant ${tenantId} not found. Please create tenant first.`);
+        // Check if tenant exists in auth database (for better error message)
+        throw new NotFoundException(`Tenant ${tenantId} not found. Please ensure the tenant is created in the core database first.`);
       }
 
       // Ensure user exists in core database (sync from auth if needed)

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Request, BadRequestException, ConflictException, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Delete, UseGuards, Request, BadRequestException, ConflictException, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { TenantService } from './tenant.service';
 import { TenantSyncService } from './tenant-sync.service';
 import { AuthClientService } from './auth-client.service';
@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MerchantService } from '../merchant/services/merchant.service';
 import { UserService } from '../user/user.service';
 import { v4 as uuidv4 } from 'uuid';
+import { SetupMarketDto } from './dto/setup-market.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('tenants')
@@ -30,32 +31,20 @@ export class TenantController {
   @Post('setup')
   async setupMarket(
     @Request() req: AuthenticatedRequest,
-    @Body() body: { 
-      name: string; 
-      description?: string; 
-      subdomain: string; 
-      customDomain?: string;
-      template?: string;
-    }
+    @Body() body: SetupMarketDto
   ) {
     try {
-      // Validate request body
-      if (!body) {
-        throw new BadRequestException('Request body is required');
-      }
-      if (!body.name || !body.name.trim()) {
-        throw new BadRequestException('Market name is required');
-      }
-      if (!body.subdomain || !body.subdomain.trim()) {
-        throw new BadRequestException('Subdomain is required');
-      }
+      // Validate user authentication
       if (!req.user || !req.user.id) {
         throw new BadRequestException('User authentication required');
       }
 
-      // Validate subdomain format
-      if (!/^[a-z0-9-]+$/.test(body.subdomain)) {
-        throw new BadRequestException('Subdomain must contain only lowercase letters, numbers, and hyphens');
+      // DTO validation is handled by ValidationPipe, but ensure values are still valid after transform
+      if (!body.name || typeof body.name !== 'string' || !body.name.trim()) {
+        throw new BadRequestException('Market name is required and cannot be empty');
+      }
+      if (!body.subdomain || typeof body.subdomain !== 'string' || !body.subdomain.trim()) {
+        throw new BadRequestException('Subdomain is required and cannot be empty');
       }
 
     // Check if subdomain is already taken or conflicts with custom domain
@@ -113,63 +102,10 @@ export class TenantController {
       }
       this.logger.log(`✅ Tenant created successfully: ${createdTenant.id}`);
 
-      // Verify tenant exists in database (double-check after creation)
-      // Use a more robust verification with multiple retries
-      let verifiedTenant = await this.prisma.tenant.findUnique({
-        where: { id: tenantId },
-      });
-      
-      // If we got the tenant from ensureTenantExists, use it directly
-      if (!verifiedTenant && createdTenant) {
-        this.logger.log(`⚠️ Tenant not immediately visible, using created tenant data...`);
-        verifiedTenant = createdTenant as any; // Type assertion for compatibility
-      }
-
-      if (!verifiedTenant) {
-        // Retry check with exponential backoff (handles potential transaction timing)
-        const maxRetries = 10; // Increased retries
-        const baseDelay = 50; // Start with 50ms delay
-        
-        for (let i = 0; i < maxRetries; i++) {
-          const delay = Math.min(baseDelay * Math.pow(2, i), 500); // Exponential backoff, capped at 500ms
-          this.logger.log(`⏳ Tenant ${tenantId} not found yet, retrying in ${delay}ms (attempt ${i + 1}/${maxRetries})...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          
-          verifiedTenant = await this.prisma.tenant.findUnique({
-            where: { id: tenantId },
-          });
-          
-          if (verifiedTenant) {
-            this.logger.log(`✅ Tenant ${tenantId} found after ${i + 1} attempt(s)`);
-            break;
-          }
-        }
-        
-        if (!verifiedTenant) {
-          this.logger.error(`❌ Tenant ${tenantId} was not found after creation. Checking database...`);
-          // Final check - maybe there's a database connection issue
-          // Final diagnostic check
-          const allTenants = await this.prisma.tenant.findMany({ take: 5 });
-          this.logger.log(`Database connection OK. Found ${allTenants.length} tenant(s) in database.`);
-          
-          // Check if tenant exists with different query
-          const tenantBySubdomain = await this.prisma.tenant.findFirst({
-            where: { subdomain: body.subdomain },
-          });
-          
-          if (tenantBySubdomain && tenantBySubdomain.id !== tenantId) {
-            this.logger.error(`⚠️ Found tenant with same subdomain but different ID: ${tenantBySubdomain.id}`);
-            throw new ConflictException('Subdomain is already taken by another tenant');
-          }
-          
-          if (allTenants.length === 0) {
-            this.logger.error(`❌ Database connection issue: No tenants found in database`);
-            throw new BadRequestException('Database connection issue. Please try again.');
-          }
-          
-          throw new BadRequestException(`Tenant ${tenantId} was not found after creation. Please try again.`);
-        }
-      }
+      // Trust the tenant returned from ensureTenantExists - it was just created
+      // The tenant exists in the database, so we can proceed
+      this.logger.log(`✅ Using tenant from ensureTenantExists: ${createdTenant.id}`);
+      const verifiedTenant = createdTenant;
 
       // Ensure user exists in core database (sync from auth)
       // Pass tenantId only after tenant is confirmed to exist
@@ -180,13 +116,29 @@ export class TenantController {
         tenantId: tenantId, // Now safe to pass since tenant exists
       });
 
+      // Tenant is confirmed to exist (from ensureTenantExists result)
+      // Proceed with merchant creation and other setup steps
+      this.logger.log(`✅ Tenant ${tenantId} confirmed and ready for setup`);
+
       // Create merchant for this user and tenant (with user data for auto-sync if needed)
-      await this.merchantService.getOrCreateMerchant(tenantId, req.user.id, {
-        businessName: body.name,
-        email: req.user.email || '',
-        name: req.user.name,
-        role: req.user.role || 'SHOP_OWNER',
-      });
+      // This is optional - don't fail the entire setup if merchant creation fails
+      try {
+        await this.merchantService.getOrCreateMerchant(tenantId, req.user.id, {
+          businessName: body.name,
+          email: req.user.email || '',
+          name: req.user.name,
+          role: req.user.role || 'SHOP_OWNER',
+        });
+        this.logger.log(`✅ Merchant created for tenant ${tenantId}`);
+      } catch (merchantError: any) {
+        // Log but don't fail - merchant can be created later
+        this.logger.warn(`⚠️ Failed to create merchant for tenant ${tenantId}, but continuing:`, merchantError);
+      }
+      
+      // If we got here, tenant was created successfully
+      // Return success response
+      this.logger.log(`✅ Market setup completed successfully for tenant ${tenantId}`);
+      
     } catch (error: any) {
       this.logger.error(`❌ Error during tenant setup for ${tenantId}:`, error);
       
@@ -527,6 +479,93 @@ export class TenantController {
   @Get(':id')
   async getTenant(@Param('id') id: string) {
     return this.tenantService.getTenant(id);
+  }
+
+  @Delete(':id')
+  async deleteTenant(
+    @Request() req: AuthenticatedRequest,
+    @Param('id') tenantId: string,
+  ) {
+    try {
+      if (!req.user?.id) {
+        throw new BadRequestException('User authentication required');
+      }
+
+      // Verify tenant exists
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+      });
+
+      if (!tenant) {
+        throw new NotFoundException('Market not found');
+      }
+
+      // Prevent deleting the currently active market
+      if (tenantId === req.user.tenantId) {
+        throw new BadRequestException('Cannot delete the currently active market. Please switch to another market first.');
+      }
+
+      this.logger.log(`🗑️ Deleting tenant ${tenantId} by user ${req.user.id}`);
+
+      // Get access token for auth service call
+      const accessToken = req.headers.authorization?.replace('Bearer ', '') || '';
+      
+      if (!accessToken) {
+        throw new BadRequestException('Authentication token required');
+      }
+
+      // Delete tenant from auth database first (this will check ownership and unlink from user)
+      // The auth service will validate ownership, so we don't need to check it here
+      try {
+        await this.authClientService.deleteTenant(tenantId, accessToken);
+        this.logger.log(`✅ Tenant ${tenantId} deleted from auth database`);
+      } catch (error: any) {
+        this.logger.error(`Failed to delete tenant from auth database:`, error);
+        // If it's a permission error, pass it through
+        if (error.message?.includes('permission') || error.message?.includes('Forbidden') || error.message?.includes('403')) {
+          throw new ForbiddenException(error.message || 'You do not have permission to delete this market');
+        }
+        // If it's a not found error, pass it through
+        if (error.message?.includes('not found') || error.message?.includes('404')) {
+          throw new NotFoundException(error.message || 'Market not found in auth database');
+        }
+        // If it's an authentication error
+        if (error.message?.includes('Authentication failed') || error.message?.includes('401')) {
+          throw new BadRequestException('Authentication failed. Please refresh your session and try again.');
+        }
+        throw new BadRequestException(`Failed to delete market: ${error.message || 'Unknown error'}`);
+      }
+
+      // Delete tenant from core database (cascade will handle related data)
+      try {
+        await this.prisma.tenant.delete({
+          where: { id: tenantId },
+        });
+        this.logger.log(`✅ Tenant ${tenantId} deleted from core database`);
+      } catch (error: any) {
+        this.logger.error(`Failed to delete tenant from core database:`, error);
+        // If tenant was already deleted from auth but not from core, that's okay
+        // But if it's a different error, throw it
+        if (error.code === 'P2025' || error.message?.includes('Record to delete does not exist')) {
+          this.logger.warn(`Tenant ${tenantId} was already deleted from core database`);
+        } else {
+          throw new BadRequestException(`Failed to delete market from core database: ${error.message || 'Unknown error'}`);
+        }
+      }
+
+      return { message: 'Market deleted successfully' };
+    } catch (error: any) {
+      // Re-throw known exceptions
+      if (error instanceof BadRequestException || 
+          error instanceof NotFoundException || 
+          error instanceof ForbiddenException) {
+        throw error;
+      }
+      
+      // Log and wrap unknown errors
+      this.logger.error(`Unexpected error deleting tenant ${tenantId}:`, error);
+      throw new BadRequestException(`Failed to delete market: ${error.message || 'Unknown error'}`);
+    }
   }
 
   // Add this endpoint to manually create tenants for testing

@@ -155,6 +155,142 @@ export class CreateProductDto {
   @IsString()
   @IsOptional()
   unitId?: string;
+
+  @IsNumber()
+  @IsOptional()
+  coinsNumber?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  notify?: boolean;
+
+  @IsNumber()
+  @IsOptional()
+  min?: number;
+
+  @IsNumber()
+  @IsOptional()
+  max?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  webStatus?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  mobileStatus?: boolean;
+
+  @IsString()
+  @IsOptional()
+  purpleCardsProductNameAr?: string;
+
+  @IsString()
+  @IsOptional()
+  purpleCardsProductNameEn?: string;
+
+  @IsString()
+  @IsOptional()
+  purpleCardsSlugAr?: string;
+
+  @IsString()
+  @IsOptional()
+  purpleCardsSlugEn?: string;
+
+  @IsString()
+  @IsOptional()
+  purpleCardsDescAr?: string;
+
+  @IsString()
+  @IsOptional()
+  purpleCardsDescEn?: string;
+
+  @IsString()
+  @IsOptional()
+  purpleCardsLongDescAr?: string;
+
+  @IsString()
+  @IsOptional()
+  purpleCardsLongDescEn?: string;
+
+  @IsString()
+  @IsOptional()
+  purpleCardsMetaTitleAr?: string;
+
+  @IsString()
+  @IsOptional()
+  purpleCardsMetaTitleEn?: string;
+
+  @IsString()
+  @IsOptional()
+  purpleCardsMetaKeywordAr?: string;
+
+  @IsString()
+  @IsOptional()
+  purpleCardsMetaKeywordEn?: string;
+
+  @IsString()
+  @IsOptional()
+  purpleCardsMetaDescriptionAr?: string;
+
+  @IsString()
+  @IsOptional()
+  purpleCardsMetaDescriptionEn?: string;
+
+  @IsString()
+  @IsOptional()
+  ish7enProductNameAr?: string;
+
+  @IsString()
+  @IsOptional()
+  ish7enProductNameEn?: string;
+
+  @IsString()
+  @IsOptional()
+  ish7enSlugAr?: string;
+
+  @IsString()
+  @IsOptional()
+  ish7enSlugEn?: string;
+
+  @IsString()
+  @IsOptional()
+  ish7enDescAr?: string;
+
+  @IsString()
+  @IsOptional()
+  ish7enDescEn?: string;
+
+  @IsString()
+  @IsOptional()
+  ish7enLongDescAr?: string;
+
+  @IsString()
+  @IsOptional()
+  ish7enLongDescEn?: string;
+
+  @IsString()
+  @IsOptional()
+  ish7enMetaTitleAr?: string;
+
+  @IsString()
+  @IsOptional()
+  ish7enMetaTitleEn?: string;
+
+  @IsString()
+  @IsOptional()
+  ish7enMetaKeywordAr?: string;
+
+  @IsString()
+  @IsOptional()
+  ish7enMetaKeywordEn?: string;
+
+  @IsString()
+  @IsOptional()
+  ish7enMetaDescriptionAr?: string;
+
+  @IsString()
+  @IsOptional()
+  ish7enMetaDescriptionEn?: string;
 }
 
 export class ProductSupplierDto {
