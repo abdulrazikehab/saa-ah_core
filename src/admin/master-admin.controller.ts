@@ -10,6 +10,7 @@ import {
   Req,
   UseGuards,
   BadRequestException,
+  NotFoundException,
   Logger,
 } from '@nestjs/common';
 import { MasterAdminService } from './master-admin.service';
@@ -122,7 +123,15 @@ export class MasterAdminController {
 
   @Delete('tenants/:id')
   async deleteTenant(@Param('id') id: string) {
-    return this.masterAdminService.deleteTenant(id);
+    try {
+      return await this.masterAdminService.deleteTenant(id);
+    } catch (error: any) {
+      this.logger.error(`Error deleting tenant ${id}:`, error);
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to delete tenant: ${error?.message || 'Unknown error'}`);
+    }
   }
 
   @Post('tenants/:id/change-plan')
@@ -604,5 +613,15 @@ export class MasterAdminController {
       throw new BadRequestException('API key must be at least 8 characters long');
     }
     return this.masterAdminService.setAdminApiKey(data.apiKey.trim());
+  }
+
+  // ==================== PAGE CONTENT MANAGEMENT ====================
+
+  @Put('pages/:slug')
+  async updatePageContent(
+    @Param('slug') slug: string,
+    @Body() content: any,
+  ) {
+    return this.masterAdminService.updatePageContent(slug, content);
   }
 }

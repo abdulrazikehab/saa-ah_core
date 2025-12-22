@@ -346,4 +346,32 @@ export class PublicService {
     };
     return descriptions[name] || 'شريك أعمال موثوق';
   }
+
+  /**
+   * Get content for a specific page (about, contact, privacy)
+   */
+  async getPageContent(slug: string) {
+    try {
+      const config = await this.prisma.platformConfig.findUnique({
+        where: { key: `page_${slug}` },
+      });
+
+      if (!config) {
+        // Return default content if not found
+        return {
+          content: {
+            titleAr: slug === 'about' ? 'من نحن' : slug === 'contact' ? 'تواصل معنا' : 'سياسة الخصوصية',
+            titleEn: slug === 'about' ? 'About Us' : slug === 'contact' ? 'Contact Us' : 'Privacy Policy',
+            contentAr: '<p>المحتوى قيد التحديث...</p>',
+            contentEn: '<p>Content coming soon...</p>',
+          }
+        };
+      }
+
+      return { content: config.value };
+    } catch (error) {
+      this.logger.error(`Failed to fetch page content for ${slug}:`, error);
+      return { content: null };
+    }
+  }
 }

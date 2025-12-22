@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, Param } from '@nestjs/common';
 import { PublicService } from './public.service';
 
 /**
@@ -59,5 +59,13 @@ export class PublicController {
   @Get('testimonials')
   async getTestimonials(@Query('limit') limit?: string) {
     return this.publicService.getTestimonials(limit ? parseInt(limit) : 6);
+  }
+
+  /**
+   * Get content for static pages (about, contact, privacy)
+   */
+  @Get('pages/:slug')
+  async getPageContent(@Param('slug') slug: string) {
+    return this.publicService.getPageContent(slug);
   }
 }

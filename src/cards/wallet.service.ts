@@ -313,6 +313,56 @@ export class WalletService {
     });
   }
 
+  // Get all top-up requests for admin (all statuses)
+  async getAllTopUpRequests(tenantId: string) {
+    const requests = await this.prisma.walletTopUpRequest.findMany({
+      where: {
+        tenantId,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        bank: {
+          select: {
+            id: true,
+            name: true,
+            nameAr: true,
+            accountNumber: true,
+            accountName: true,
+          },
+        },
+        senderAccount: {
+          select: {
+            id: true,
+            bankName: true,
+            accountNumber: true,
+            accountName: true,
+          },
+        },
+        processedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Map the data to match frontend expectations
+    return requests.map((request) => ({
+      ...request,
+      amount: Number(request.amount),
+      proofImage: request.receiptImage, // Map receiptImage to proofImage for frontend compatibility
+    }));
+  }
+
   // Approve top-up request (admin action)
   async approveTopUpRequest(requestId: string, processedByUserId: string, authToken: string, tenantId: string) {
     const request = await this.prisma.walletTopUpRequest.findUnique({

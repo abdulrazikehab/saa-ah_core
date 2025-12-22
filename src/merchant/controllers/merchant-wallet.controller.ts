@@ -246,6 +246,25 @@ export class MerchantWalletController {
     }
   }
 
+  @Get('admin/topups')
+  async getAllTopUps(@Request() req: any) {
+    console.log('✅ GET /merchant/wallet/admin/topups - Route hit!');
+    try {
+      const userId = req.user?.id || req.user?.userId;
+      if (!userId) {
+        throw new BadRequestException('User authentication required');
+      }
+      const context = await this.merchantService.validateMerchantAccess(userId);
+      console.log('✅ Tenant ID:', context.tenantId);
+      const requests = await this.walletService.getAllTopUpRequests(context.tenantId);
+      console.log('✅ Returning', requests.length, 'top-up requests');
+      return requests;
+    } catch (error) {
+      console.error('❌ Error in getAllTopUps:', error);
+      throw error;
+    }
+  }
+
   @Get('admin/pending-topups')
   async getPendingTopUps(@Request() req: any) {
     const userId = req.user?.id || req.user?.userId;

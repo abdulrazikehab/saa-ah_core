@@ -93,45 +93,33 @@ export class WalletController {
     return this.walletService.getTopUpRequests(req.user.userId, status);
   }
 
-  @Get('admin/pending-topups')
-  async getPendingTopUps(@Request() req: any) {
-    if (!req.user) {
-      throw new BadRequestException('Authentication required. Please log in.');
-    }
-    
+  @Get('admin/topups')
+  async getAllTopUps(@Request() req: any) {
     const tenantId = req.user.tenantId || req.tenantId;
     if (!tenantId || tenantId === 'default' || tenantId === 'system') {
-      throw new BadRequestException(
-        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
-      );
+      throw new BadRequestException('Tenant ID not found or invalid');
     }
-    
+    return this.walletService.getAllTopUpRequests(tenantId);
+  }
+
+  @Get('admin/pending-topups')
+  async getPendingTopUps(@Request() req: any) {
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException('Tenant ID not found or invalid');
+    }
     return this.walletService.getPendingTopUpRequests(tenantId);
   }
 
   @Post('admin/topup/:id/approve')
   async approveTopUp(@Request() req: any, @Param('id') id: string) {
-    if (!req.user) {
-      throw new BadRequestException('Authentication required. Please log in.');
-    }
-    
     const userId = req.user.userId || req.user.id;
-    if (!userId) {
-      throw new BadRequestException('User ID not found');
-    }
-    
-    // Get auth token from headers
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       throw new BadRequestException('Authorization header is required');
     }
     const authToken = authHeader.substring(7);
-    
-    // Get tenant ID
     const tenantId = req.user.tenantId || req.tenantId;
-    if (!tenantId) {
-      throw new BadRequestException('Tenant ID not found');
-    }
     
     return this.walletService.approveTopUpRequest(id, userId, authToken, tenantId);
   }
@@ -142,27 +130,13 @@ export class WalletController {
     @Param('id') id: string,
     @Body() body: { reason: string },
   ) {
-    if (!req.user) {
-      throw new BadRequestException('Authentication required. Please log in.');
-    }
-    
     const userId = req.user.userId || req.user.id;
-    if (!userId) {
-      throw new BadRequestException('User ID not found');
-    }
-    
-    // Get auth token from headers
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       throw new BadRequestException('Authorization header is required');
     }
     const authToken = authHeader.substring(7);
-    
-    // Get tenant ID
     const tenantId = req.user.tenantId || req.tenantId;
-    if (!tenantId) {
-      throw new BadRequestException('Tenant ID not found');
-    }
     
     return this.walletService.rejectTopUpRequest(id, userId, body.reason, authToken, tenantId);
   }
