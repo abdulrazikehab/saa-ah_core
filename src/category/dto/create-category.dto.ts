@@ -42,4 +42,23 @@ export class CreateCategoryDto {
   @IsOptional()
   @Min(0)
   sortOrder?: number;
+
+  // Quantity slider fields for supplier API integration
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  minQuantity?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  maxQuantity?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  enableSlider?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  applySliderToAllProducts?: boolean;
 }

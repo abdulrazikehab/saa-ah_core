@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException, ConflictExc
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateMerchantProfileDto, MerchantSettingsDto } from '../dto';
 import { UserService } from '../../user/user.service';
+import { WalletService } from '../../cards/wallet.service';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -11,6 +12,7 @@ export class MerchantService {
   constructor(
     private prisma: PrismaService,
     private userService: UserService,
+    private walletService: WalletService,
   ) {}
 
   // Get or create merchant for user
@@ -64,17 +66,26 @@ export class MerchantService {
         }
       }
 
+      if (!user) {
+        this.logger.error(`Failed to ensure user exists for userId=${userId}, tenantId=${tenantId || 'no-tenant'}, email=${data?.email || 'no-email'}`);
+        throw new Error(`Failed to ensure user exists. Please ensure user is synced from auth service.`);
+      }
+
       merchant = await this.prisma.merchant.create({
         data: {
           tenantId,
           userId,
-          businessName: data?.businessName || user.name || 'My Business',
+          businessName: data?.businessName || user?.name || 'My Business',
           businessNameAr: data?.businessNameAr,
-          email: user.email,
+          email: user?.email || data?.email,
           status: 'ACTIVE',
         },
         include: { user: { select: { id: true, email: true, name: true } } },
       });
+
+      if (!merchant) {
+         throw new Error('Failed to create merchant record');
+      }
 
       this.logger.log(`Created merchant ${merchant.id} for user ${userId} in tenant ${tenantId}`);
     }
@@ -227,8 +238,135 @@ export class MerchantService {
   }
 
   // Validate merchant access
-  async validateMerchantAccess(userId: string, requiredPermission?: string) {
-    const context = await this.getMerchantContext(userId);
+  async validateMerchantAccess(userId: string, requiredPermission?: string, userData?: { email?: string; name?: string; role?: string; tenantId?: string }) {
+    let context = await this.getMerchantContext(userId);
+
+    if (!context) {
+      // If no merchant account found, check if user is in core database
+      let user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, name: true, role: true, tenantId: true },
+      });
+
+      // If user not found by ID, check by email (user might exist with different ID)
+      if (!user && userData?.email) {
+        user = await this.prisma.user.findUnique({
+          where: { email: userData.email },
+          select: { id: true, email: true, name: true, role: true, tenantId: true },
+        });
+        if (user) {
+          // User found by email with different ID - check merchant with actual user ID
+          this.logger.log(`User found by email ${userData.email} with ID ${user.id} (JWT has ${userId}), checking merchant...`);
+          context = await this.getMerchantContext(user.id);
+          if (context) {
+            // Merchant exists for the actual user - use that
+            return context;
+          }
+        }
+      }
+
+      // If user not in core database but we have userData (e.g. from JWT), use that
+      // This is common for newly registered customers or employees who haven't been synced yet
+      const effectiveTenantId = user?.tenantId || userData?.tenantId;
+      const effectiveEmail = user?.email || userData?.email;
+      const effectiveRole = user?.role || userData?.role;
+      const effectiveName = user?.name || userData?.name;
+
+      this.logger.log(`validateMerchantAccess: userId=${userId}, effectiveTenantId=${effectiveTenantId}, effectiveEmail=${effectiveEmail}, effectiveRole=${effectiveRole}`);
+
+      if (effectiveTenantId && effectiveEmail && effectiveRole !== 'SUPER_ADMIN') {
+        this.logger.log(`Auto-creating merchant and wallet for ${effectiveRole} ${userId} in tenant ${effectiveTenantId}`);
+        
+        try {
+          // First, ensure user exists in core database with proper data
+          let coreUser = await this.prisma.user.findUnique({ where: { id: userId } });
+          if (!coreUser) {
+            this.logger.log(`User ${userId} not in core DB, syncing from auth...`);
+            try {
+              coreUser = await this.userService.ensureUserExists(userId, {
+                email: effectiveEmail,
+                name: effectiveName || undefined,
+                role: effectiveRole,
+                tenantId: effectiveTenantId,
+              });
+              if (!coreUser) {
+                throw new Error('ensureUserExists returned null');
+              }
+              // IMPORTANT: Use the actual user ID from the database (might be different if found by email)
+              const actualUserId = coreUser.id;
+              if (actualUserId !== userId) {
+                this.logger.warn(`User ID mismatch: JWT has ${userId}, but DB user has ${actualUserId}. Using DB user ID.`);
+              }
+              this.logger.log(`✅ User ${actualUserId} synced to core database`);
+            } catch (syncError: any) {
+              this.logger.error(`Failed to sync user to core DB: ${syncError?.message || String(syncError)}`, syncError?.stack);
+              throw new BadRequestException(
+                `Failed to sync user account: ${syncError?.message || 'Unknown error'}. ` +
+                `Please try logging out and logging back in, or contact support.`
+              );
+            }
+          } else {
+            // User exists, but ensure tenantId is set correctly
+            if (coreUser.tenantId !== effectiveTenantId) {
+              this.logger.log(`Updating user ${userId} tenantId from ${coreUser.tenantId} to ${effectiveTenantId}`);
+              try {
+                coreUser = await this.prisma.user.update({
+                  where: { id: userId },
+                  data: { tenantId: effectiveTenantId },
+                });
+              } catch (updateError: any) {
+                this.logger.warn(`Could not update tenantId for user ${userId}: ${updateError?.message}`);
+              }
+            }
+          }
+
+          // Use the actual user ID from the database (might be different from JWT userId if user was found by email)
+          const actualUserId = coreUser.id;
+
+          // Create merchant using the actual user ID from database
+          await this.getOrCreateMerchant(effectiveTenantId, actualUserId, {
+            email: effectiveEmail,
+            name: effectiveName || undefined,
+            role: effectiveRole,
+          });
+          this.logger.log(`✅ Merchant created/retrieved for ${actualUserId}`);
+
+          // Create wallet using the actual user ID from database
+          await this.walletService.getOrCreateWallet(effectiveTenantId, actualUserId, {
+            email: effectiveEmail,
+            name: effectiveName || undefined,
+            role: effectiveRole,
+          });
+          this.logger.log(`✅ Wallet created/retrieved for ${actualUserId}`);
+          
+          // Refresh context using the actual user ID from database
+          context = await this.getMerchantContext(actualUserId);
+        } catch (e: any) {
+          this.logger.error(`Error in auto-creation: ${e?.message || String(e)}`, e?.stack);
+          // Re-throw with more context
+          if (e instanceof BadRequestException) {
+            throw e; // Re-throw BadRequestException as-is
+          }
+          throw new BadRequestException(
+            `Failed to create merchant account: ${e?.message || 'Unknown error'}. ` +
+            `Please ensure you have created a store/market first via the setup page.`
+          );
+        }
+      } else if (!effectiveTenantId) {
+        // User doesn't have a tenant - they need to create a store first
+        this.logger.warn(`User ${userId} does not have a tenant. They need to create a store first.`);
+        throw new BadRequestException(
+          'You need to create a store/market first before accessing merchant features. ' +
+          'Please complete the store setup from the dashboard.'
+        );
+      } else if (!effectiveEmail) {
+        // User email is missing
+        this.logger.warn(`User ${userId} does not have an email in JWT token.`);
+        throw new BadRequestException(
+          'User email is missing. Please log out and log in again to refresh your session.'
+        );
+      }
+    }
 
     if (!context) {
       throw new NotFoundException('No merchant account found');

@@ -5,7 +5,7 @@ generator client {
 datasource db {
   provider          = "postgresql"
   url               = env("DATABASE_URL")
-  //shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 model Tenant {
@@ -91,6 +91,41 @@ model Product {
   brandId           String?
   odooProductId     String?
   unitId            String?
+  coinsNumber       Int?
+  notify            Boolean                 @default(false)
+  min               Int?
+  max               Int?
+  enableSlider      Boolean                 @default(false)
+  webStatus         Boolean                 @default(true)
+  mobileStatus      Boolean                 @default(true)
+  purpleCardsProductNameAr  String?
+  purpleCardsProductNameEn  String?
+  purpleCardsSlugAr         String?
+  purpleCardsSlugEn         String?
+  purpleCardsDescAr         String?
+  purpleCardsDescEn         String?
+  purpleCardsLongDescAr     String?
+  purpleCardsLongDescEn     String?
+  purpleCardsMetaTitleAr    String?
+  purpleCardsMetaTitleEn    String?
+  purpleCardsMetaKeywordAr  String?
+  purpleCardsMetaKeywordEn  String?
+  purpleCardsMetaDescriptionAr String?
+  purpleCardsMetaDescriptionEn String?
+  ish7enProductNameAr       String?
+  ish7enProductNameEn       String?
+  ish7enSlugAr              String?
+  ish7enSlugEn              String?
+  ish7enDescAr              String?
+  ish7enDescEn              String?
+  ish7enLongDescAr          String?
+  ish7enLongDescEn          String?
+  ish7enMetaTitleAr         String?
+  ish7enMetaTitleEn         String?
+  ish7enMetaKeywordAr       String?
+  ish7enMetaKeywordEn       String?
+  ish7enMetaDescriptionAr   String?
+  ish7enMetaDescriptionEn   String?
   cartItems         CartItem[]
   orderItems        OrderItem[]
   categories        ProductCategory[]
@@ -150,6 +185,10 @@ model Category {
   isActive      Boolean           @default(true)
   parentId      String?
   sortOrder     Int               @default(0)
+  minQuantity   Int?
+  maxQuantity   Int?
+  enableSlider  Boolean           @default(false)
+  applySliderToAllProducts Boolean @default(false)
   cardProducts  CardProduct[]     @relation("CardProductCategory")
   parent        Category?         @relation("CategoryHierarchy", fields: [parentId], references: [id])
   children      Category[]        @relation("CategoryHierarchy")
@@ -670,6 +709,7 @@ model User {
   tenantId        String?
   avatar          String?
   recoveryId      String?              @unique
+  nationalId     String?               // National ID or Passport ID
   bankAccounts    BankAccount[]        @relation("BankAccounts")
   importedBatches CardBatch[]          @relation("ImportedBatches")
   cardsPurchased  CardInventory[]      @relation("CardsSold")
@@ -930,6 +970,10 @@ model Brand {
   abcAnalysis                String?
   odooCategoryId             String?
   sortOrder                  Int           @default(0)
+  minQuantity                Int?
+  maxQuantity                Int?
+  enableSlider               Boolean       @default(false)
+  applySliderToAllProducts   Boolean       @default(false)
   createdAt                  DateTime      @default(now())
   updatedAt                  DateTime      @updatedAt
   tenant                     Tenant        @relation(fields: [tenantId], references: [id])

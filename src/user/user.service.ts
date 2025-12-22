@@ -1,5 +1,5 @@
 // apps/app-core/src/user/user.service.ts
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface UserProfile {
@@ -298,10 +298,51 @@ export class UserService {
    */
   async ensureUserExists(userId: string, userData: { email: string; name?: string; role?: string; tenantId?: string }): Promise<any> {
     try {
-      // Check if user already exists
+      // Check if user already exists by ID
       let user = await this.prisma.user.findUnique({
         where: { id: userId },
       });
+
+      // If user not found by ID, check by email (handle cases where user was created with different ID)
+      // This handles scenarios where the same email might have been used with different user IDs
+      if (!user && userData.email) {
+        const userByEmail = await this.prisma.user.findUnique({
+          where: { email: userData.email },
+        });
+        
+        if (userByEmail) {
+          // User exists with same email but potentially different ID
+          // Use the existing user to avoid conflicts and maintain data integrity
+          this.logger.warn(`User with email ${userData.email} exists with ID ${userByEmail.id} (JWT has ${userId}). Using existing user.`);
+          user = userByEmail;
+          
+          // Update user data if needed (name, role, tenantId)
+          const updateData: any = {};
+          if (userData.name && user.name !== userData.name) updateData.name = userData.name;
+          if (userData.role && user.role !== userData.role) updateData.role = userData.role as any;
+          
+          // Update tenantId if provided and tenant exists
+          if (userData.tenantId && user.tenantId !== userData.tenantId) {
+            const tenantExists = await this.prisma.tenant.findUnique({
+              where: { id: userData.tenantId },
+            });
+            if (tenantExists) {
+              updateData.tenantId = userData.tenantId;
+            }
+          }
+          
+          if (Object.keys(updateData).length > 0) {
+            user = await this.prisma.user.update({
+              where: { id: user.id },
+              data: updateData,
+            });
+            this.logger.log(`Updated user ${user.id} with new data`);
+          }
+          
+          // Return the existing user (with potentially different ID than JWT, but same email)
+          return user;
+        }
+      }
 
       if (user) {
         // Update user if data changed
@@ -349,10 +390,14 @@ export class UserService {
       const createData: any = {
         id: userId,
         email: userData.email,
-        name: userData.name,
         password: 'SYNCED_FROM_AUTH', // Placeholder - password is only in auth DB
         role: (userData.role as any) || 'SHOP_OWNER',
       };
+
+      // Add name only if provided (it's optional)
+      if (userData.name) {
+        createData.name = userData.name;
+      }
 
       // Only set tenantId if tenant exists (to avoid foreign key constraint)
       if (userData.tenantId) {
@@ -392,13 +437,58 @@ export class UserService {
       this.logger.log(`Created user ${userId} in core database (synced from auth)`);
       return user;
     } catch (error: any) {
-      // If unique constraint error, user might have been created by another request
+      // If unique constraint error
       if (error?.code === 'P2002') {
-        this.logger.log(`User ${userId} was created by another request`);
-        return await this.prisma.user.findUnique({ where: { id: userId } });
+        // Check if it's email conflict
+        if (error.meta?.target?.includes('email')) {
+          this.logger.warn(`Email conflict for user ${userId} with email ${userData.email}`);
+          // Try to find the conflicting user by email
+          const conflictingUser = await this.prisma.user.findUnique({ where: { email: userData.email } });
+          if (conflictingUser) {
+            // If the conflicting user has the same ID, it's the same user - just return it
+            if (conflictingUser.id === userId) {
+              this.logger.log(`User ${userId} already exists with same email - returning existing user`);
+              // Update tenantId if needed
+              if (userData.tenantId && !conflictingUser.tenantId) {
+                try {
+                  const tenantExists = await this.prisma.tenant.findUnique({
+                    where: { id: userData.tenantId },
+                  });
+                  if (tenantExists) {
+                    const updated = await this.prisma.user.update({
+                      where: { id: userId },
+                      data: { tenantId: userData.tenantId },
+                    });
+                    return updated;
+                  }
+                } catch (updateError) {
+                  this.logger.warn(`Could not update tenantId for user ${userId}: ${updateError}`);
+                }
+              }
+              return conflictingUser;
+            }
+            // If different ID, it's a real conflict - but check if the requested user ID exists first
+            const requestedUser = await this.prisma.user.findUnique({ where: { id: userId } });
+            if (requestedUser) {
+              // User exists with the requested ID - return it (email might have changed)
+              this.logger.log(`User ${userId} exists but email conflict - returning user by ID`);
+              return requestedUser;
+            }
+            // Real conflict: different user has this email
+            this.logger.error(`Email ${userData.email} is used by different user ${conflictingUser.id} (requested: ${userId})`);
+            throw new BadRequestException(`Email ${userData.email} is already used by another account. Please contact support.`);
+          }
+        }
+
+        // For other unique constraint errors (like ID conflict), try to fetch the existing user
+        this.logger.log(`User ${userId} may have been created by another request - fetching existing user`);
+        const existingUser = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (existingUser) {
+          return existingUser;
+        }
       }
       this.logger.error(`Error ensuring user exists: ${error}`);
       throw error;
     }
-  }
+    }
 }

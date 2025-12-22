@@ -298,6 +298,10 @@ export class CategoryController {
     if (body.parentId !== undefined) updateData.parentId = body.parentId || null;
     if (body.isActive !== undefined) updateData.isActive = body.isActive;
     if (body.sortOrder !== undefined) updateData.sortOrder = body.sortOrder;
+    if (body.minQuantity !== undefined) updateData.minQuantity = body.minQuantity;
+    if (body.maxQuantity !== undefined) updateData.maxQuantity = body.maxQuantity;
+    if (body.enableSlider !== undefined) updateData.enableSlider = body.enableSlider;
+    if (body.applySliderToAllProducts !== undefined) updateData.applySliderToAllProducts = body.applySliderToAllProducts;
 
     const category = await this.prisma.category.update({
       where: { id: id },

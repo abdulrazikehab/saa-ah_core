@@ -174,6 +174,10 @@ export class CreateProductDto {
 
   @IsBoolean()
   @IsOptional()
+  enableSlider?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
   webStatus?: boolean;
 
   @IsBoolean()

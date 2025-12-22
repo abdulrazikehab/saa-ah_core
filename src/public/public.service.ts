@@ -1,11 +1,16 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { TenantService } from '../tenant/tenant.service';
 
 @Injectable()
 export class PublicService {
   private readonly logger = new Logger(PublicService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => TenantService))
+    private tenantService: TenantService,
+  ) {}
 
   /**
    * Get all active partners for public display
@@ -372,6 +377,96 @@ export class PublicService {
     } catch (error) {
       this.logger.error(`Failed to fetch page content for ${slug}:`, error);
       return { content: null };
+    }
+  }
+
+  /**
+   * Check if a subdomain is available and provide suggestions if not
+   */
+  async checkSubdomainAvailability(subdomain: string) {
+    try {
+      // Basic validation
+      if (!subdomain || subdomain.length < 3) {
+        return { available: false, message: 'Subdomain too short' };
+      }
+
+      const isAvailable = await this.tenantService.checkSubdomainAvailability(subdomain);
+      if (isAvailable) {
+        return { available: true };
+      }
+
+      // Generate 3 suggestions
+      const suggestions = [
+        `${subdomain}1`,
+        `${subdomain}-store`,
+        `${subdomain}-sa`,
+        `${subdomain}-online`,
+        `${subdomain}-market`,
+        `${subdomain}2024`,
+      ];
+
+      const availableSuggestions: string[] = [];
+      for (const suggestion of suggestions) {
+        if (availableSuggestions.length >= 3) break;
+        
+        // Clean suggestion (lowercase, alphanumeric and hyphens only)
+        const cleanSuggestion = suggestion.toLowerCase().replace(/[^a-z0-9-]/g, '');
+        
+        if (await this.tenantService.checkSubdomainAvailability(cleanSuggestion)) {
+          availableSuggestions.push(cleanSuggestion);
+        }
+      }
+
+      // Fallback if not enough suggestions
+      let counter = 2;
+      while (availableSuggestions.length < 3 && counter < 100) {
+        const fallback = `${subdomain}${counter}`;
+        if (await this.tenantService.checkSubdomainAvailability(fallback)) {
+          availableSuggestions.push(fallback);
+        }
+        counter++;
+      }
+
+      return {
+        available: false,
+        suggestions: availableSuggestions.slice(0, 3),
+      };
+    } catch (error) {
+      this.logger.error(`Error checking subdomain availability for ${subdomain}:`, error);
+      return { available: false, suggestions: [] };
+    }
+  }
+
+  /**
+   * Get active banks for a tenant (for checkout display)
+   * Public endpoint - customers can see merchant bank accounts during checkout
+   */
+  async getBanksForCheckout(tenantId: string) {
+    try {
+      const banks = await this.prisma.bank.findMany({
+        where: {
+          tenantId,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          nameAr: true,
+          code: true,
+          logo: true,
+          accountName: true,
+          accountNumber: true,
+          iban: true,
+          swiftCode: true,
+          sortOrder: true,
+        },
+        orderBy: { sortOrder: 'asc' },
+      });
+
+      return { banks };
+    } catch (error) {
+      this.logger.error(`Failed to fetch banks for tenant ${tenantId}:`, error);
+      return { banks: [] };
     }
   }
 }

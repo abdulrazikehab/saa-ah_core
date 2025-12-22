@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Param } from '@nestjs/common';
+import { Controller, Get, Query, Param, Request } from '@nestjs/common';
 import { PublicService } from './public.service';
 
 /**
@@ -67,5 +67,30 @@ export class PublicController {
   @Get('pages/:slug')
   async getPageContent(@Param('slug') slug: string) {
     return this.publicService.getPageContent(slug);
+  }
+
+  /**
+   * Check subdomain availability and get suggestions
+   */
+  @Get('check-subdomain')
+  async checkSubdomain(@Query('subdomain') subdomain: string) {
+    return this.publicService.checkSubdomainAvailability(subdomain);
+  }
+
+  /**
+   * Get active banks for checkout (public endpoint)
+   * Customers can see merchant bank accounts during payment
+   * Tenant is resolved from subdomain/headers by middleware
+   */
+  @Get('banks')
+  async getBanksForCheckout(@Request() req: any, @Query('tenantId') tenantId?: string) {
+    // Priority: 1. Query param, 2. Middleware (req.tenantId), 3. Request header
+    const effectiveTenantId = tenantId || req.tenantId || req.headers['x-tenant-id'];
+    
+    if (!effectiveTenantId || effectiveTenantId === 'default' || effectiveTenantId === 'system') {
+      return { banks: [] };
+    }
+    
+    return this.publicService.getBanksForCheckout(effectiveTenantId);
   }
 }

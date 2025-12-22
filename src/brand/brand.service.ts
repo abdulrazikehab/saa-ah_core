@@ -18,6 +18,11 @@ export interface CreateBrandDto {
   averageConsumptionPerDay?: number;
   abcAnalysis?: string;
   odooCategoryId?: string;
+  // Quantity slider fields for supplier API integration
+  minQuantity?: number;
+  maxQuantity?: number;
+  enableSlider?: boolean;
+  applySliderToAllProducts?: boolean;
 }
 
 export interface UpdateBrandDto {
@@ -86,6 +91,10 @@ export class BrandService {
           averageConsumptionPerDay: data.averageConsumptionPerDay || 0,
           abcAnalysis: data.abcAnalysis,
           odooCategoryId: data.odooCategoryId,
+          minQuantity: data.minQuantity,
+          maxQuantity: data.maxQuantity,
+          enableSlider: data.enableSlider || false,
+          applySliderToAllProducts: data.applySliderToAllProducts || false,
         },
       });
 
@@ -184,6 +193,10 @@ export class BrandService {
         averageConsumptionPerDay: data.averageConsumptionPerDay,
         abcAnalysis: data.abcAnalysis,
         odooCategoryId: data.odooCategoryId,
+        minQuantity: data.minQuantity,
+        maxQuantity: data.maxQuantity,
+        enableSlider: data.enableSlider,
+        applySliderToAllProducts: data.applySliderToAllProducts,
       },
     });
 

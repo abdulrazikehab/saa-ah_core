@@ -33,6 +33,8 @@ export class MerchantWalletController {
       if (!userId) {
         throw new BadRequestException('User authentication required');
       }
+      // Ensure merchant and wallet exist
+      await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
       return this.walletService.getBalance(userId);
     } catch (error) {
       throw error;
@@ -46,7 +48,7 @@ export class MerchantWalletController {
       if (!userId) {
         throw new BadRequestException('User authentication required');
       }
-      const context = await this.merchantService.validateMerchantAccess(userId);
+      const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
       return this.walletService.getBanks(context.tenantId);
     } catch (error) {
       return []; // Return empty array if merchant access fails
@@ -60,7 +62,7 @@ export class MerchantWalletController {
       if (!userId) {
         throw new BadRequestException('User authentication required');
       }
-      const context = await this.merchantService.validateMerchantAccess(userId);
+      const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
       return this.walletService.getAllBanks(context.tenantId);
     } catch (error) {
       return [];
@@ -88,19 +90,86 @@ export class MerchantWalletController {
     if (!userId) {
       throw new BadRequestException('User authentication required');
     }
-    const context = await this.merchantService.validateMerchantAccess(userId);
+
+    // Check if user has a tenant before proceeding
+    if (!req.user?.tenantId) {
+      throw new BadRequestException(
+        'You need to create a store/market first before adding bank accounts. ' +
+        'Please complete the store setup from the dashboard.'
+      );
+    }
+
+    // Ensure user data is complete for sync
+    // Note: JWT doesn't include 'name', so we'll fetch it from database if needed
+    const userData = {
+      email: req.user?.email || '',
+      name: req.user?.name, // May be undefined from JWT
+      role: req.user?.role || 'SHOP_OWNER',
+      tenantId: req.user?.tenantId,
+    };
+
+    // Validate required fields
+    if (!userData.email) {
+      throw new BadRequestException('User email is required. Please log out and log in again.');
+    }
+
+    if (!userData.tenantId) {
+      throw new BadRequestException(
+        'Your session does not have a store/market assigned. ' +
+        'Please log out and log back in after creating your store, or refresh the page.'
+      );
+    }
+
+    let context;
+    try {
+      context = await this.merchantService.validateMerchantAccess(userId, undefined, userData);
+    } catch (error: any) {
+      // Provide more helpful error message
+      if (error.message?.includes('store/market') || 
+          error.message?.includes('create a store') ||
+          error.message?.includes('log out and log')) {
+        throw error; // Re-throw as-is if it's already a helpful message
+      }
+      
+      // Check if it's a user sync issue
+      if (error.message?.includes('ensure user exists') || error.message?.includes('sync')) {
+        // If it's a specific email conflict, show that message
+        if (error.message?.includes('Email') || error.message?.includes('already used')) {
+          throw error;
+        }
+        
+        throw new BadRequestException(
+          'Failed to sync your account. Please log out and log back in to refresh your session, ' +
+          'or contact support if the issue persists.'
+        );
+      }
+      
+      throw new BadRequestException(
+        `Failed to access merchant account: ${error.message || 'Unknown error'}. ` +
+        `Please ensure you have created a store/market first and try logging out and back in.`
+      );
+    }
 
     let logoUrl: string | undefined;
     if (logoFile) {
-      const uploadResult = await this.cloudinaryService.uploadFile(logoFile);
-      logoUrl = uploadResult.secure_url || uploadResult.url;
+      const uploadResult = await this.cloudinaryService.uploadImage(logoFile);
+      logoUrl = uploadResult.secureUrl || uploadResult.url;
     }
+
+    // Convert string values to proper types (form data sends everything as strings)
+    const isActive = typeof body.isActive === 'string' 
+      ? body.isActive === 'true' || body.isActive === '1'
+      : body.isActive ?? true;
+    
+    const sortOrder = typeof body.sortOrder === 'string'
+      ? parseInt(body.sortOrder, 10) || 0
+      : body.sortOrder ?? 0;
 
     return this.walletService.createBank(context.tenantId, {
       ...body,
       logo: logoUrl,
-      isActive: body.isActive ?? true,
-      sortOrder: body.sortOrder ?? 0,
+      isActive,
+      sortOrder,
     });
   }
 
@@ -126,9 +195,23 @@ export class MerchantWalletController {
     if (!userId) {
       throw new BadRequestException('User authentication required');
     }
-    const context = await this.merchantService.validateMerchantAccess(userId);
+    const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
 
     const updateData: any = { ...body };
+    
+    // Convert string values to proper types (form data sends everything as strings)
+    if (updateData.isActive !== undefined) {
+      updateData.isActive = typeof updateData.isActive === 'string' 
+        ? updateData.isActive === 'true' || updateData.isActive === '1'
+        : updateData.isActive;
+    }
+    
+    if (updateData.sortOrder !== undefined) {
+      updateData.sortOrder = typeof updateData.sortOrder === 'string'
+        ? parseInt(updateData.sortOrder, 10) || 0
+        : updateData.sortOrder;
+    }
+    
     if (logoFile) {
       const uploadResult = await this.cloudinaryService.uploadFile(logoFile);
       updateData.logo = uploadResult.secure_url || uploadResult.url;
@@ -143,7 +226,7 @@ export class MerchantWalletController {
     if (!userId) {
       throw new BadRequestException('User authentication required');
     }
-    const context = await this.merchantService.validateMerchantAccess(userId);
+    const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
     return this.walletService.deleteBank(context.tenantId, id);
   }
 
@@ -158,6 +241,9 @@ export class MerchantWalletController {
       if (!userId) {
         throw new BadRequestException('User authentication required');
       }
+      // Ensure merchant and wallet exist
+      await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
+      
       const pageNum = page ? parseInt(page, 10) : 1;
       const limitNum = limit ? parseInt(limit, 10) : 20;
       return this.walletService.getTransactions(userId, pageNum, limitNum);
@@ -173,6 +259,8 @@ export class MerchantWalletController {
       if (!userId) {
         throw new BadRequestException('User authentication required');
       }
+      // Ensure merchant and wallet exist
+      await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
       return this.walletService.getUserBankAccounts(userId);
     } catch (error) {
       return [];
@@ -196,6 +284,8 @@ export class MerchantWalletController {
     if (!userId) {
       throw new BadRequestException('User authentication required');
     }
+    // Ensure merchant and wallet exist
+    await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
     return this.walletService.addBankAccount(userId, body);
   }
 
@@ -240,6 +330,8 @@ export class MerchantWalletController {
       if (!userId) {
         throw new BadRequestException('User authentication required');
       }
+      // Ensure merchant and wallet exist
+      await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
       return this.walletService.getTopUpRequests(userId, status);
     } catch (error) {
       return [];
@@ -254,7 +346,7 @@ export class MerchantWalletController {
       if (!userId) {
         throw new BadRequestException('User authentication required');
       }
-      const context = await this.merchantService.validateMerchantAccess(userId);
+      const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
       console.log('✅ Tenant ID:', context.tenantId);
       const requests = await this.walletService.getAllTopUpRequests(context.tenantId);
       console.log('✅ Returning', requests.length, 'top-up requests');
@@ -271,7 +363,7 @@ export class MerchantWalletController {
     if (!userId) {
       throw new BadRequestException('User authentication required');
     }
-    const context = await this.merchantService.validateMerchantAccess(userId);
+    const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
     return this.walletService.getPendingTopUpRequests(context.tenantId);
   }
 
@@ -311,7 +403,7 @@ export class MerchantWalletController {
     }
     const authToken = authHeader.substring(7);
     
-    const context = await this.merchantService.validateMerchantAccess(userId);
+    const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
     const tenantId = context.tenantId;
     
     return this.walletService.rejectTopUpRequest(id, userId, body.reason, authToken, tenantId);
