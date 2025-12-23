@@ -11,4 +11,6 @@ export * from './invoice.service';
 export * from './merchant-report.service';
 export * from './merchant-session.service';
 export * from './merchant-audit.service';
+export * from './merchant-sync.service';
+export * from './merchant-search.service';
 

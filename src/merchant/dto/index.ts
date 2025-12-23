@@ -31,3 +31,9 @@ export * from './notification.dto';
 // Report DTOs
 export * from './report.dto';
 
+// Sync DTOs
+export * from './sync.dto';
+
+// Search DTOs
+export * from './search.dto';
+

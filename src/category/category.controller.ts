@@ -9,6 +9,7 @@ import {
   UseGuards, 
   Request,
   Headers,
+  Query,
   BadRequestException,
   ForbiddenException
 } from '@nestjs/common';
@@ -36,10 +37,20 @@ export class CategoryController {
   @Get()
   async getCategories(
     @Request() req: any,
-    @Headers('x-tenant-id') tenantIdHeader: string
+    @Headers('x-tenant-id') tenantIdHeader: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20,
   ) {
     try {
       const tenantId = req.tenantId || tenantIdHeader || process.env.DEFAULT_TENANT_ID || 'default';
+      const pageNum = Number(page) || 1;
+      const limitNum = Number(limit) || 20;
+      const skip = (pageNum - 1) * limitNum;
+
+      // Count total first
+      const total = await this.prisma.category.count({ 
+        where: { tenantId, isActive: true } 
+      }).catch(() => 0);
 
       const categories = await this.prisma.category.findMany({
         where: { 
@@ -63,6 +74,8 @@ export class CategoryController {
           }
         },
         orderBy: { name: 'asc' },
+        skip,
+        take: limitNum,
       });
       
       // Map to include productCount for frontend
@@ -71,19 +84,35 @@ export class CategoryController {
         productCount: c._count.products
       }));
       
-      return { categories: mappedCategories };
+      return { 
+        categories: mappedCategories,
+        meta: {
+          total,
+          page: pageNum,
+          limit: limitNum,
+          totalPages: Math.ceil(total / limitNum)
+        }
+      };
     } catch (error: any) {
       console.error('Error in getCategories:', error);
       
       // If tenant doesn't exist, return empty array
       if (error?.code === 'P2003' || error?.message?.includes('Foreign key constraint')) {
-        return { categories: [] };
+        return { categories: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
       }
       
       // If parentId column doesn't exist, try without it
       if (error.message?.includes('parentId') || error.code === 'P2001') {
         const tenantId = req.tenantId || tenantIdHeader || process.env.DEFAULT_TENANT_ID || 'default';
+        const pageNum = Number(page) || 1;
+        const limitNum = Number(limit) || 20;
+        const skip = (pageNum - 1) * limitNum;
+
         try {
+          const total = await this.prisma.category.count({ 
+            where: { tenantId, isActive: true } 
+          }).catch(() => 0);
+
           const categories = await this.prisma.category.findMany({
             where: { 
               tenantId,
@@ -105,6 +134,8 @@ export class CategoryController {
               }
             },
             orderBy: { name: 'asc' },
+            skip,
+            take: limitNum,
           });
           
           const mappedCategories = categories.map((c: any) => ({
@@ -113,11 +144,19 @@ export class CategoryController {
             parentId: null
           }));
           
-          return { categories: mappedCategories };
+          return { 
+            categories: mappedCategories,
+            meta: {
+              total,
+              page: pageNum,
+              limit: limitNum,
+              totalPages: Math.ceil(total / limitNum)
+            }
+          };
         } catch (fallbackError: any) {
           // If tenant still doesn't exist, return empty array
           if (fallbackError?.code === 'P2003' || fallbackError?.message?.includes('Foreign key constraint')) {
-            return { categories: [] };
+            return { categories: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
           }
           throw fallbackError;
         }
@@ -209,11 +248,6 @@ export class CategoryController {
       }
       throw error;
     }
-    
-    return { 
-      message: 'Category created successfully',
-      category: category
-    };
   }
 
   @Public()

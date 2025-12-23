@@ -13,4 +13,6 @@ export * from './invoice.controller';
 export * from './merchant-dashboard.controller';
 export * from './merchant-session.controller';
 export * from './merchant-wallet.controller';
+export * from './merchant-sync.controller';
+export * from './merchant-search.controller';
 

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, Headers } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, Headers, Query } from '@nestjs/common';
 import { BrandService, CreateBrandDto, UpdateBrandDto } from './brand.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthenticatedRequest } from '../types/request.types';
@@ -19,7 +19,9 @@ export class BrandController {
   @Get()
   async findAll(
     @Request() req: any,
-    @Headers('x-tenant-id') tenantIdHeader?: string
+    @Headers('x-tenant-id') tenantIdHeader?: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20,
   ) {
     // Support both authenticated and public access
     // IMPORTANT: Never fall back to user.id as tenantId – it's not a valid tenant identifier.
@@ -33,9 +35,11 @@ export class BrandController {
 
     if (!tenantId || tenantId === 'system') {
       // Return empty array if no valid tenant
-      return [];
+      return { data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
     }
-    return this.brandService.findAll(tenantId);
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 20;
+    return this.brandService.findAll(tenantId, pageNum, limitNum);
   }
 
   @Get(':id')

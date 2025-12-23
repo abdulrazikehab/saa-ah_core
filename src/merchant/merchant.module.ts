@@ -18,6 +18,8 @@ import { InvoiceService } from './services/invoice.service';
 import { MerchantReportService } from './services/merchant-report.service';
 import { MerchantSessionService } from './services/merchant-session.service';
 import { MerchantAuditService } from './services/merchant-audit.service';
+import { MerchantSyncService } from './services/merchant-sync.service';
+import { MerchantSearchService } from './services/merchant-search.service';
 
 // Controllers
 import { MerchantAuthController } from './controllers/merchant-auth.controller';
@@ -35,6 +37,8 @@ import { InvoiceController } from './controllers/invoice.controller';
 import { MerchantDashboardController } from './controllers/merchant-dashboard.controller';
 import { MerchantSessionController } from './controllers/merchant-session.controller';
 import { MerchantWalletController } from './controllers/merchant-wallet.controller';
+import { MerchantSyncController } from './controllers/merchant-sync.controller';
+import { MerchantSearchController } from './controllers/merchant-search.controller';
 
 @Module({
   imports: [PrismaModule, CardsModule, CloudinaryModule, UserModule],
@@ -54,6 +58,8 @@ import { MerchantWalletController } from './controllers/merchant-wallet.controll
     MerchantDashboardController,
     MerchantSessionController,
     MerchantWalletController,
+    MerchantSyncController,
+    MerchantSearchController,
   ],
   providers: [
     MerchantService,
@@ -69,6 +75,8 @@ import { MerchantWalletController } from './controllers/merchant-wallet.controll
     MerchantReportService,
     MerchantSessionService,
     MerchantAuditService,
+    MerchantSyncService,
+    MerchantSearchService,
   ],
   exports: [
     MerchantService,
@@ -84,6 +92,8 @@ import { MerchantWalletController } from './controllers/merchant-wallet.controll
     MerchantReportService,
     MerchantSessionService,
     MerchantAuditService,
+    MerchantSyncService,
+    MerchantSearchService,
   ],
 })
 export class MerchantModule {}

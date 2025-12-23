@@ -98,7 +98,7 @@ export class ProductController {
     @Request() req: any,
     @Headers('x-tenant-id') tenantIdHeader: string,
     @Query('page') page: number = 1,
-    @Query('limit') limit: number = 10,
+    @Query('limit') limit: number = 20,
     @Query('categoryId') categoryId?: string,
     @Query('search') search?: string,
     @Query('minPrice') minPrice?: number,

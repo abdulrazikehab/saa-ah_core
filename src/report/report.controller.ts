@@ -23,12 +23,22 @@ export class ReportController {
   }
 
   @Get('products')
-  async getProductReport(@Request() req: any) {
+  async getProductReport(
+    @Request() req: any,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20',
+    @Query('search') search?: string,
+  ) {
     const tenantId = req.user?.tenantId || req.user?.id || req.tenantId;
     if (!tenantId) {
-      return [];
+      return { data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
     }
-    return this.reports.getProductReport(tenantId);
+    return this.reports.getProductReport(
+      tenantId,
+      parseInt(page, 10) || 1,
+      parseInt(limit, 10) || 20,
+      search,
+    );
   }
 
   @Get('customers')

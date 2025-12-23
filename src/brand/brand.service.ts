@@ -41,6 +41,10 @@ export interface UpdateBrandDto {
   averageConsumptionPerDay?: number;
   abcAnalysis?: string;
   odooCategoryId?: string;
+  minQuantity?: number;
+  maxQuantity?: number;
+  enableSlider?: boolean;
+  applySliderToAllProducts?: boolean;
 }
 
 @Injectable()
@@ -129,20 +133,37 @@ export class BrandService {
     }
   }
 
-  async findAll(tenantId: string) {
+  async findAll(tenantId: string, page: number = 1, limit: number = 20) {
     if (!tenantId) {
-      return [];
+      return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
     }
     try {
-      return await this.prisma.brand.findMany({
-        where: { tenantId },
-        orderBy: { createdAt: 'desc' },
-      });
+      const skip = (page - 1) * limit;
+      
+      const [total, brands] = await Promise.all([
+        this.prisma.brand.count({ where: { tenantId } }),
+        this.prisma.brand.findMany({
+          where: { tenantId },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        })
+      ]);
+
+      return {
+        data: brands,
+        meta: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit)
+        }
+      };
     } catch (error: any) {
       // If tenant doesn't exist in database, return empty array
       if (error?.code === 'P2003' || error?.message?.includes('Foreign key constraint')) {
         this.logger.warn(`⚠️ Tenant ${tenantId} does not exist in database. Returning empty brands list.`);
-        return [];
+        return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
       }
       throw error;
     }

@@ -2199,6 +2199,80 @@ enum PaymentIntentStatus {
   EXPIRED
 }
 
+model UserSyncData {
+  id                String    @id @default(cuid())
+  userId            String
+  tenantId          String
+  email             String?
+  username          String?
+  role              String?
+  tenantName        String?
+  tenantSubdomain   String?
+  avatar            String?
+  businessName      String?
+  businessNameAr    String?
+  status            String?
+  defaultCurrency   String?
+  timezone          String?
+  isOwner           Boolean?  @default(false)
+  employeeId        String?
+  syncedAt          DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([userId, tenantId])
+  @@index([userId])
+  @@index([tenantId])
+  @@index([syncedAt])
+  @@map("user_sync_data")
+}
+
+model LocationSyncData {
+  id                String    @id @default(cuid())
+  userId            String
+  tenantId          String
+  latitude          Decimal   @db.Decimal(10, 8)
+  longitude         Decimal   @db.Decimal(11, 8)
+  altitude          Decimal?  @db.Decimal(10, 2)
+  accuracy          Decimal?  @db.Decimal(10, 2)
+  altitudeAccuracy  Decimal?  @db.Decimal(10, 2)
+  heading           Decimal?  @db.Decimal(5, 2)
+  speed             Decimal?  @db.Decimal(10, 2)
+  timestamp         BigInt
+  address           String?   @db.Text
+  city              String?
+  country           String?
+  postalCode        String?
+  syncedAt          DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([timestamp])
+  @@index([syncedAt])
+  @@map("location_sync_data")
+}
+
+model SearchHistory {
+  id           String    @id @default(cuid())
+  userId       String
+  tenantId     String
+  query        String?   @db.Text
+  entities     String[]  // Array of entity types: ['products', 'orders', 'tasks', 'customers']
+  filters      Json?     // Store filters as JSON
+  resultCount  Int       @default(0)
+  entity       String?   // Primary entity type for categorization
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([createdAt])
+  @@index([entity])
+  @@index([userId, tenantId, createdAt(sort: Desc)])
+  @@map("search_history")
+}
+
 enum InvoiceStatus {
   ISSUED
   VOIDED

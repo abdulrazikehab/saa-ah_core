@@ -44,13 +44,25 @@ export class ReportService {
     }
   }
 
-  async getProductReport(tenantId: string) {
+  async getProductReport(tenantId: string, page: number = 1, limit: number = 20, search?: string) {
     if (!tenantId) {
-      return [];
+      return { data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
     }
     try {
+      // Build where clause with optional search
+      const where: any = { tenantId };
+      if (search) {
+        where.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { sku: { contains: search, mode: 'insensitive' } },
+        ];
+      }
+
+      // Get total count first
+      const total = await this.prisma.product.count({ where });
+
       const products = await this.prisma.product.findMany({
-        where: { tenantId },
+        where,
         include: {
           variants: {
             select: {
@@ -68,13 +80,16 @@ export class ReportService {
               price: true
             }
           }
-        }
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
       });
 
       // Helper function to round currency to 2 decimal places
       const roundCurrency = (value: number): number => Math.round(value * 100) / 100;
 
-      return products.map((p: any) => {
+      const data = products.map((p: any) => {
         // Calculate total stock from variants (inventoryQuantity field)
         const totalStock = p.variants?.reduce((sum: number, v: any) => sum + (Number(v.inventoryQuantity || 0)), 0) || 0;
         
@@ -95,11 +110,21 @@ export class ReportService {
           salesCount,
           revenue
         };
-      }).sort((a: any, b: any) => b.revenue - a.revenue);
+      });
+
+      return {
+        data,
+        meta: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      };
     } catch (error: any) {
-      // If tenant doesn't exist, return empty array
+      // If tenant doesn't exist, return empty response
       if (error?.code === 'P2003' || error?.message?.includes('Foreign key constraint')) {
-        return [];
+        return { data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
       }
       throw error;
     }

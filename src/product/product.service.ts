@@ -361,11 +361,38 @@ export class ProductService {
 
     this.logger.log(`✅ Product created successfully: ${product.id}`);
     return this.mapToResponseDto(product);
-  } catch (error) {
+  } catch (error: any) {
     this.logger.error(`❌ Product creation failed for tenant ${tenantId}:`, error);
     
-    if (error === 'P2003') {
-      // Foreign key constraint violation
+    // Handle unique constraint violation (race condition with concurrent imports)
+    if (error?.code === 'P2002' && upsert && productData.sku) {
+      this.logger.log(`🔄 Unique constraint violation in upsert mode, retrying as update...`);
+      
+      // Find the existing product and update it
+      const existingProduct = await this.prisma.product.findFirst({
+        where: {
+          tenantId,
+          sku: productData.sku,
+        },
+        select: { id: true },
+      });
+      
+      if (existingProduct) {
+        return this.update(tenantId, existingProduct.id, createProductDto);
+      }
+    }
+    
+    // Handle P2002 without upsert - throw user-friendly error
+    if (error?.code === 'P2002') {
+      const targets = error.meta?.target || [];
+      if (targets.includes('sku') || targets.includes('tenantId_sku')) {
+        throw new ConflictException('SKU must be unique within your store. A product with this SKU already exists.');
+      }
+      throw new ConflictException(`A product with these values already exists: ${targets.join(', ')}`);
+    }
+    
+    // Foreign key constraint violation
+    if (error?.code === 'P2003') {
       throw new ForbiddenException(`Cannot create product: Tenant ${tenantId} does not exist in the system`);
     }
     

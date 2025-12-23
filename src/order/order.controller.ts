@@ -65,7 +65,7 @@ export class OrderController {
     try {
       const tenantId = this.ensureTenantId(req);
       const pageNum = page ? parseInt(page, 10) : 1;
-      const limitNum = limit ? parseInt(limit, 10) : 10;
+      const limitNum = limit ? parseInt(limit, 10) : 20;
       return this.orderService.getOrders(tenantId, pageNum, limitNum, status);
     } catch (error: any) {
       this.logger.error('Error getting orders:', error);
@@ -103,7 +103,7 @@ export class OrderController {
       }
       const tenantId = this.ensureTenantId(req);
       const pageNum = page ? parseInt(page, 10) : 1;
-      const limitNum = limit ? parseInt(limit, 10) : 10;
+      const limitNum = limit ? parseInt(limit, 10) : 20;
       return this.orderService.searchOrders(tenantId, query, pageNum, limitNum);
     } catch (error: any) {
       this.logger.error('Error searching orders:', error);
