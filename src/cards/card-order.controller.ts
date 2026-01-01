@@ -21,7 +21,7 @@ export class CardOrderController {
   async createOrder(@Request() req: any, @Body() body: CreateOrderDto) {
     return this.cardOrderService.createOrder(
       req.tenantId,
-      req.user.userId,
+      req.user.id || req.user.userId,
       body,
       req.ip,
       req.headers['user-agent'],
@@ -37,7 +37,7 @@ export class CardOrderController {
   ) {
     return this.cardOrderService.getUserOrders(
       req.tenantId,
-      req.user.userId,
+      req.user.id || req.user.userId,
       parseInt(page),
       parseInt(limit),
       status,
@@ -46,7 +46,16 @@ export class CardOrderController {
 
   @Get(':id')
   async getOrder(@Request() req: any, @Param('id') id: string) {
-    return this.cardOrderService.getOrder(req.tenantId, req.user.userId, id);
+    return this.cardOrderService.getOrder(req.tenantId, req.user.id || req.user.userId, id);
+  }
+
+  @Get(':id/download-files')
+  async downloadFiles(@Request() req: any, @Param('id') id: string) {
+    return this.cardOrderService.generateOrderFiles(
+      req.tenantId,
+      req.user.id || req.user.userId,
+      id,
+    );
   }
 
   @Post(':id/cancel')
@@ -57,7 +66,7 @@ export class CardOrderController {
   ) {
     return this.cardOrderService.cancelOrder(
       req.tenantId,
-      req.user.userId,
+      req.user.id || req.user.userId,
       id,
       body.reason,
     );
@@ -98,4 +107,3 @@ export class CardOrderController {
     );
   }
 }
-

@@ -3,7 +3,9 @@ import { Request } from 'express';
 export interface AuthenticatedRequest extends Request {
   tenantId: string;
   user: {
-    sub(tenantId: string, sub: any): unknown;
+    sub?: string;
+    name?: string;
+    avatar?: string;
     id: string;
     tenantId: string;
     role: string;

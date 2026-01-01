@@ -63,7 +63,11 @@ export class MerchantAuthController {
       );
 
       return {
-        user: req.user,
+        user: {
+          id: userId,
+          email: req.user.email,
+          role: req.user.role,
+        },
         merchant: {
           id: merchant.id,
           businessName: merchant.businessName,
@@ -74,11 +78,40 @@ export class MerchantAuthController {
         },
         isOwner: true,
         employeeId: null,
-        permissions: null,
+        permissions: null, // Owners have all permissions implicitly
+        mustChangePassword: false,
       };
     }
 
     const merchant = await this.merchantService.getMerchant(context.merchantId);
+
+    // Normalize permissions to include all fields
+    let normalizedPermissions = null;
+    if (context.isOwner) {
+      // Owners have all permissions implicitly - return null or all true
+      normalizedPermissions = null;
+    } else if (context.permissions) {
+      // Normalize employee permissions to include all fields
+      const perms = context.permissions as any;
+      normalizedPermissions = {
+        ordersCreate: perms.ordersCreate ?? false,
+        ordersRead: perms.ordersRead ?? false,
+        ordersUpdate: perms.ordersUpdate ?? false,
+        ordersDelete: perms.ordersDelete ?? false,
+        reportsRead: perms.reportsRead ?? false,
+        walletRead: perms.walletRead ?? false,
+        walletRecharge: perms.walletRecharge ?? false,
+        playersWrite: perms.playersWrite ?? false,
+        playersRead: perms.playersRead ?? false,
+        employeesManage: perms.employeesManage ?? false,
+        employeesRead: perms.employeesRead ?? false,
+        settingsWrite: perms.settingsWrite ?? false,
+        settingsRead: perms.settingsRead ?? false,
+        invoicesRead: perms.invoicesRead ?? false,
+        productsRead: perms.productsRead ?? false,
+        productsWrite: perms.productsWrite ?? false,
+      };
+    }
 
     return {
       user: {
@@ -96,7 +129,8 @@ export class MerchantAuthController {
       },
       isOwner: context.isOwner,
       employeeId: context.employeeId,
-      permissions: context.permissions || null,
+      permissions: normalizedPermissions,
+      mustChangePassword: false,
     };
   }
 

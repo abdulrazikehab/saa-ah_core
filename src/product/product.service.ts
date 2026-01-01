@@ -4,6 +4,7 @@ import { TenantSyncService } from '../tenant/tenant-sync.service'; // Add this i
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductResponseDto } from './dto/product-response.dto';
+import { Decimal } from '@prisma/client/runtime/library';
 
 @Injectable()
 export class ProductService {
@@ -187,7 +188,9 @@ export class ProductService {
   }
 
   // Validate suppliers exist if provided
-  let validSuppliers: Array<{ supplierId: string; discountRate?: number; isPrimary?: boolean }> = [];
+  let validSuppliers: Array<{ supplierId: string; discountRate?: number; isPrimary?: boolean; price?: number }> = [];
+  let bestSupplierPrice: number | null = null;
+  
   if (suppliers && suppliers.length > 0) {
     for (const supplierData of suppliers) {
       const supplier = await this.prisma.supplier.findFirst({
@@ -198,15 +201,25 @@ export class ProductService {
         },
       });
       if (supplier) {
+        const supplierPrice = supplierData.price ? Number(supplierData.price) : null;
+        
+        // Track the best (lowest) price
+        if (supplierPrice !== null && supplierPrice > 0) {
+          if (bestSupplierPrice === null || supplierPrice < bestSupplierPrice) {
+            bestSupplierPrice = supplierPrice;
+          }
+        }
+        
         validSuppliers.push({
           supplierId: supplierData.supplierId,
           discountRate: supplierData.discountRate || supplier.discountRate || 0,
           isPrimary: supplierData.isPrimary || false,
+          price: supplierPrice || undefined,
         });
       }
     }
   } else if (supplierIds && supplierIds.length > 0) {
-    // If only supplierIds provided, use default discount rates
+    // If only supplierIds provided, use default discount rates (no prices)
     const existingSuppliers = await this.prisma.supplier.findMany({
       where: {
         id: { in: supplierIds },
@@ -219,6 +232,16 @@ export class ProductService {
       discountRate: Number(s.discountRate),
       isPrimary: index === 0, // First supplier is primary by default
     }));
+  }
+
+  // Auto-calculate costPerItem from best supplier price if suppliers exist
+  // Only override costPerItem if it wasn't manually provided and we have supplier prices
+  if (validSuppliers.length > 0 && bestSupplierPrice !== null && bestSupplierPrice > 0) {
+    // If costPerItem was not provided or is 0, use the best supplier price
+    if (!productData.costPerItem || productData.costPerItem === 0) {
+      productData.costPerItem = bestSupplierPrice;
+      this.logger.log(`💰 Auto-set costPerItem to best supplier price: ${bestSupplierPrice}`);
+    }
   }
 
   // Process tags: create or find ProductTag records and prepare tagItems
@@ -300,6 +323,8 @@ export class ProductService {
               supplierId: s.supplierId,
               discountRate: s.discountRate,
               isPrimary: s.isPrimary,
+              lastPrice: s.price ? new Decimal(s.price) : undefined,
+              lastPriceCheck: s.price ? new Date() : undefined,
             })),
           },
         }),
@@ -464,6 +489,7 @@ export class ProductService {
       where.OR = [
         { name: { contains: filters.search, mode: 'insensitive' } },
         { description: { contains: filters.search, mode: 'insensitive' } },
+        { sku: { contains: filters.search, mode: 'insensitive' } },
       ];
     }
     
@@ -731,7 +757,81 @@ export class ProductService {
       throw new NotFoundException('Product not found');
     }
 
-    const { variants, images, categoryIds, tags, ...productData } = updateProductDto;
+    const { variants, images, categoryIds, tags, suppliers, supplierIds, ...productData } = updateProductDto;
+
+    // Validate and process suppliers if provided
+    let validSuppliers: Array<{ supplierId: string; discountRate?: number; isPrimary?: boolean; price?: number }> = [];
+    let bestSupplierPrice: number | null = null;
+    
+    if (suppliers && suppliers.length > 0) {
+      for (const supplierData of suppliers) {
+        const supplier = await this.prisma.supplier.findFirst({
+          where: {
+            id: supplierData.supplierId,
+            tenantId,
+            isActive: true,
+          },
+        });
+        if (supplier) {
+          const supplierPrice = supplierData.price ? Number(supplierData.price) : null;
+          
+          // Track the best (lowest) price
+          if (supplierPrice !== null && supplierPrice > 0) {
+            if (bestSupplierPrice === null || supplierPrice < bestSupplierPrice) {
+              bestSupplierPrice = supplierPrice;
+            }
+          }
+          
+          validSuppliers.push({
+            supplierId: supplierData.supplierId,
+            discountRate: supplierData.discountRate || supplier.discountRate || 0,
+            isPrimary: supplierData.isPrimary || false,
+            price: supplierPrice || undefined,
+          });
+        }
+      }
+    } else if (supplierIds && supplierIds.length > 0) {
+      // If only supplierIds provided, use default discount rates (no prices)
+      const existingSuppliers = await this.prisma.supplier.findMany({
+        where: {
+          id: { in: supplierIds },
+          tenantId,
+          isActive: true,
+        },
+      });
+      validSuppliers = existingSuppliers.map((s: any, index: number) => ({
+        supplierId: s.id,
+        discountRate: Number(s.discountRate),
+        isPrimary: index === 0,
+      }));
+    }
+
+    // Auto-calculate costPerItem from best supplier price if suppliers exist
+    // Only override costPerItem if it wasn't manually provided and we have supplier prices
+    if (validSuppliers.length > 0 && bestSupplierPrice !== null && bestSupplierPrice > 0) {
+      // If costPerItem was not provided in update, use the best supplier price
+      if (productData.costPerItem === undefined || productData.costPerItem === null || productData.costPerItem === 0) {
+        productData.costPerItem = bestSupplierPrice;
+        this.logger.log(`💰 Auto-set costPerItem to best supplier price on update: ${bestSupplierPrice}`);
+      }
+    } else if (validSuppliers.length > 0) {
+      // If suppliers exist but no prices provided, don't allow manual costPerItem override
+      // Check if product already has suppliers
+      const existingSuppliers = await this.prisma.productSupplier.findMany({
+        where: { productId: id },
+      });
+      if (existingSuppliers.length > 0 && productData.costPerItem !== undefined) {
+        // If updating suppliers without prices, keep existing costPerItem or calculate from existing supplier prices
+        const existingPrices = existingSuppliers
+          .filter(s => s.lastPrice !== null)
+          .map(s => Number(s.lastPrice));
+        if (existingPrices.length > 0) {
+          const bestExistingPrice = Math.min(...existingPrices);
+          productData.costPerItem = bestExistingPrice;
+          this.logger.log(`💰 Using existing best supplier price: ${bestExistingPrice}`);
+        }
+      }
+    }
 
     // Check SKU uniqueness if provided
     if (productData.sku && productData.sku !== existingProduct.sku) {
@@ -862,6 +962,21 @@ export class ProductService {
               }),
             },
           }),
+          // Update suppliers if provided
+          ...((suppliers !== undefined || supplierIds !== undefined) && {
+            suppliers: {
+              deleteMany: {}, // Remove existing suppliers
+              ...(validSuppliers.length > 0 && {
+                create: validSuppliers.map(s => ({
+                  supplierId: s.supplierId,
+                  discountRate: s.discountRate,
+                  isPrimary: s.isPrimary,
+                  lastPrice: s.price ? new Decimal(s.price) : undefined,
+                  lastPriceCheck: s.price ? new Date() : undefined,
+                })),
+              }),
+            },
+          }),
         },
         include: {
           variants: true,
@@ -880,6 +995,13 @@ export class ProductService {
               tag: true,
             },
           },
+          suppliers: {
+            include: {
+              supplier: true,
+            },
+          },
+          brand: true,
+          unit: true,
         },
       });
 
@@ -1178,6 +1300,8 @@ export class ProductService {
         },
         discountRate: Number(ps.discountRate),
         isPrimary: ps.isPrimary,
+        lastPrice: ps.lastPrice ? Number(ps.lastPrice) : undefined,
+        lastPriceCheck: ps.lastPriceCheck,
       })),
       unit: product.unit ? {
         id: product.unit.id,

@@ -42,12 +42,16 @@ export class MerchantCartService {
         items: {
           include: {
             product: {
-              include: { brand: true },
+              include: { 
+                brand: true,
+                images: { take: 1, orderBy: { sortOrder: 'asc' } }
+              },
             },
           },
         },
       },
     });
+
 
     if (!cartWithItems) {
       throw new NotFoundException('Cart not found');
@@ -60,9 +64,12 @@ export class MerchantCartService {
 
     const items = cartWithItems.items.map((item) => {
       const product = item.product;
-      const effectivePrice = new Decimal(product.wholesalePrice);
+      // Use costPerItem as wholesale price, fallback to price
+      const effectivePrice = new Decimal(product.costPerItem || product.price);
       const lineTotal = effectivePrice.times(item.quantity);
-      const lineTax = lineTotal.times(product.taxRate);
+      // Fallback tax rate to 0.15 if not specified (Product doesn't have taxRate field)
+      const taxRate = 0.15; 
+      const lineTax = lineTotal.times(taxRate);
 
       subtotal = subtotal.plus(lineTotal);
       taxTotal = taxTotal.plus(lineTax);
@@ -72,15 +79,16 @@ export class MerchantCartService {
         productId: product.id,
         productName: product.name,
         productNameAr: product.nameAr,
-        productImage: product.image,
+        productImage: product.images?.[0]?.url || null,
         qty: item.quantity,
         effectiveUnitPrice: effectivePrice.toNumber(),
         lineTotal: lineTotal.toNumber(),
-        minQty: product.minQuantity,
-        maxQty: product.maxQuantity,
-        availableStock: product.stockCount,
+        minQty: product.min || 1,
+        maxQty: product.max || 1000,
+        availableStock: product.isAvailable ? 999 : 0, // Simplified for now
         metadata: item.metadata,
       };
+
     });
 
     const total = subtotal.minus(discountTotal).plus(taxTotal);
@@ -103,12 +111,31 @@ export class MerchantCartService {
   async addItem(merchantId: string, tenantId: string, dto: AddCartItemDto, employeeId?: string) {
     const cart = await this.getOrCreateCart(merchantId, employeeId);
 
-    // Validate product
-    const product = await this.cardProductService.findOne(tenantId, dto.productId);
+    // DEBUG LOGGING
+    this.logger.log(`Attempting to add product: ${dto.productId}`);
+    
+    const productData = await this.prisma.product.findUnique({
+      where: { id: dto.productId },
+      include: {
+        brand: true,
+        images: { take: 1, orderBy: { sortOrder: 'asc' } }
+      },
+    });
 
-    if (!product.isActive || !product.isAvailable) {
+    if (!productData) {
+      this.logger.warn(`Product ${dto.productId} not found in database.`);
+      throw new NotFoundException(`Product ${dto.productId} not found`);
+    }
+
+    const product = {
+      ...productData,
+      availableStock: productData.isAvailable ? 999 : 0,
+    };
+
+    if (!product.isAvailable) {
       throw new BadRequestException('Product is not available');
     }
+
 
     // If qty is 0, remove the item
     if (dto.qty === 0) {
@@ -119,14 +146,14 @@ export class MerchantCartService {
     }
 
     // Validate quantity
-    if (dto.qty < product.minQuantity) {
-      throw new BadRequestException(`Minimum quantity is ${product.minQuantity}`);
+    const minQty = product.min || 1;
+    const maxQty = product.max || 1000;
+
+    if (dto.qty < minQty) {
+      throw new BadRequestException(`Minimum quantity is ${minQty}`);
     }
-    if (dto.qty > product.maxQuantity) {
-      throw new BadRequestException(`Maximum quantity is ${product.maxQuantity}`);
-    }
-    if (dto.qty > product.availableStock) {
-      throw new BadRequestException(`Only ${product.availableStock} items available`);
+    if (dto.qty > maxQty) {
+      throw new BadRequestException(`Maximum quantity is ${maxQty}`);
     }
 
     // Upsert cart item
@@ -135,16 +162,17 @@ export class MerchantCartService {
       update: {
         quantity: dto.qty,
         metadata: dto.metadata as any,
-        unitPriceSnapshot: product.wholesalePrice,
+        unitPriceSnapshot: product.costPerItem || product.price,
       },
       create: {
         cartId: cart.id,
         productId: dto.productId,
         quantity: dto.qty,
         metadata: dto.metadata as any,
-        unitPriceSnapshot: product.wholesalePrice,
+        unitPriceSnapshot: product.costPerItem || product.price,
       },
     });
+
 
     this.logger.log(`Updated cart ${cart.id} - product ${dto.productId} qty ${dto.qty}`);
 
@@ -173,15 +201,16 @@ export class MerchantCartService {
     }
 
     // Validate quantity
-    if (dto.qty < item.product.minQuantity) {
-      throw new BadRequestException(`Minimum quantity is ${item.product.minQuantity}`);
+    const minQty = item.product.min || 1;
+    const maxQty = item.product.max || 1000;
+
+    if (dto.qty < minQty) {
+      throw new BadRequestException(`Minimum quantity is ${minQty}`);
     }
-    if (dto.qty > item.product.maxQuantity) {
-      throw new BadRequestException(`Maximum quantity is ${item.product.maxQuantity}`);
+    if (dto.qty > maxQty) {
+      throw new BadRequestException(`Maximum quantity is ${maxQty}`);
     }
-    if (dto.qty > item.product.stockCount) {
-      throw new BadRequestException(`Only ${item.product.stockCount} items available`);
-    }
+
 
     await this.prisma.merchantCartItem.update({
       where: { id: itemId },

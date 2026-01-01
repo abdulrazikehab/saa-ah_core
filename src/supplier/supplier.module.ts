@@ -4,6 +4,7 @@ import { SupplierInventoryService } from './supplier-inventory.service';
 import { SupplierService } from './supplier.service';
 import { SupplierPricingService } from './supplier-pricing.service';
 import { SupplierPurchaseService } from './supplier-purchase.service';
+import { SupplierStatisticsService } from './supplier-statistics.service';
 import { SupplierController } from './supplier.controller';
 import { SupplierManagementController } from './supplier-management.controller';
 import { SupplierApiController } from './supplier-api.controller';
@@ -19,6 +20,7 @@ import { SupplierAdapterFactory } from './integrations/supplier-adapter.factory'
     SupplierService,
     SupplierPricingService,
     SupplierPurchaseService,
+    SupplierStatisticsService,
     BitaqatyBusinessService,
     SupplierAdapterFactory,
   ],

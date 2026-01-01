@@ -4,6 +4,8 @@ import { WalletService } from './wallet.service';
 import { CardInventoryService } from './card-inventory.service';
 import { CardProductService } from './card-product.service';
 import { Decimal } from '@prisma/client/runtime/library';
+import { NotificationsService } from '../notifications/notifications.service';
+import * as XLSX from 'xlsx';
 
 export interface OrderItem {
   productId: string;
@@ -24,6 +26,7 @@ export class CardOrderService {
     private walletService: WalletService,
     private cardInventoryService: CardInventoryService,
     private cardProductService: CardProductService,
+    private notificationsService: NotificationsService,
   ) {}
 
   // Generate order number
@@ -37,7 +40,7 @@ export class CardOrderService {
   async createOrder(tenantId: string, userId: string, data: CreateOrderDto, ipAddress?: string, userAgent?: string) {
     // Validate items
     if (!data.items || data.items.length === 0) {
-      throw new BadRequestException('Order must have at least one item');
+      throw new BadRequestException('يجب أن يحتوي الطلب على عنصر واحد على الأقل');
     }
 
     // Calculate totals and validate products
@@ -51,18 +54,18 @@ export class CardOrderService {
       const product = await this.cardProductService.findOne(tenantId, item.productId);
 
       if (!product.isActive || !product.isAvailable) {
-        throw new BadRequestException(`Product ${product.name} is not available`);
+        throw new BadRequestException(`المنتج ${product.name} غير متوفر حالياً`);
       }
 
       if (item.quantity < product.minQuantity || item.quantity > product.maxQuantity) {
         throw new BadRequestException(
-          `Quantity for ${product.name} must be between ${product.minQuantity} and ${product.maxQuantity}`,
+          `الكمية المطلوبة لـ ${product.name} يجب أن تكون بين ${product.minQuantity} و ${product.maxQuantity}`,
         );
       }
 
       // Check stock
       if (product.availableStock < item.quantity) {
-        throw new BadRequestException(`Only ${product.availableStock} cards available for ${product.name}`);
+        throw new BadRequestException(`المتوفر فقط ${product.availableStock} بطاقة لـ ${product.name}`);
       }
 
       // Calculate item totals
@@ -90,7 +93,7 @@ export class CardOrderService {
     // Check wallet balance
     const hasFunds = await this.walletService.hasSufficientBalance(userId, totalWithTax.toNumber());
     if (!hasFunds) {
-      throw new BadRequestException('Insufficient wallet balance');
+      throw new BadRequestException('رصيد المحفظة غير كافٍ');
     }
 
     // Create order in transaction
@@ -237,6 +240,22 @@ export class CardOrderService {
         deliveredAt: new Date(),
       },
     });
+
+    // Send notification
+    try {
+      await this.notificationsService.create({
+        tenantId: order.tenantId,
+        userId: userId,
+        type: 'order',
+        titleEn: 'Order Delivered',
+        titleAr: 'تم تسليم الطلب',
+        bodyEn: `Your order #${order.orderNumber} has been delivered. You can now view your card codes.`,
+        bodyAr: `تم تسليم طلبك رقم #${order.orderNumber}. يمكنك الآن عرض أكواد البطاقات.`,
+        data: { orderId: order.id },
+      });
+    } catch (e) {
+      this.logger.error('Failed to send order delivery notification', e);
+    }
   }
 
   // Get single order with details
@@ -444,6 +463,49 @@ export class CardOrderService {
       cancelledOrders,
       pendingOrders: totalOrders - deliveredOrders - cancelledOrders,
       totalRevenue: totalRevenue._sum.totalWithTax || 0,
+    };
+  }
+
+  // Generate Excel and Text files for the order
+  async generateOrderFiles(tenantId: string, userId: string, orderId: string) {
+    const order = await this.getOrder(tenantId, userId, orderId);
+    
+    const codes: any[] = [];
+    const textLines: string[] = [];
+
+    textLines.push(`Order Number: ${order.orderNumber}`);
+    textLines.push(`Date: ${new Date(order.createdAt).toLocaleString()}`);
+    textLines.push('-------------------------------------------');
+
+    for (const item of order.items) {
+      const productName = item.product.nameAr || item.product.name;
+      textLines.push(`\nProduct: ${productName}`);
+      
+      for (const delivery of item.deliveries) {
+        // Salla format: Code, PIN (optional), Product Name
+        codes.push({
+          'الكود': delivery.cardCode,
+          'الرقم السري': delivery.cardPin || '',
+          'اسم المنتج': productName,
+        });
+
+        textLines.push(`Code: ${delivery.cardCode}${delivery.cardPin ? ` | PIN: ${delivery.cardPin}` : ''}`);
+      }
+    }
+
+    // Generate Excel
+    const worksheet = XLSX.utils.json_to_sheet(codes);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Codes');
+    const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    // Generate Text
+    const textBuffer = Buffer.from(textLines.join('\n'), 'utf-8');
+
+    return {
+      excel: excelBuffer.toString('base64'),
+      text: textBuffer.toString('base64'),
+      fileName: `Order_${order.orderNumber}`,
     };
   }
 }

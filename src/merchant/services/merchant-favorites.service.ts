@@ -24,12 +24,13 @@ export class MerchantFavoritesService {
             id: true,
             name: true,
             nameAr: true,
-            image: true,
-            wholesalePrice: true,
-            currency: true,
+            images: { take: 1, orderBy: { sortOrder: 'asc' } },
+            costPerItem: true,
+            price: true,
             brand: { select: { name: true } },
           },
         },
+
         player: {
           select: {
             id: true,
@@ -51,11 +52,12 @@ export class MerchantFavoritesService {
             id: f.product.id,
             name: f.product.name,
             nameAr: f.product.nameAr,
-            image: f.product.image,
-            wholesalePrice: Number(f.product.wholesalePrice),
-            currency: f.product.currency,
+            image: f.product.images?.[0]?.url || null,
+            wholesalePrice: Number(f.product.costPerItem || f.product.price),
+            currency: 'SAR', // Fallback for Product
             brandName: f.product.brand?.name,
           }
+
         : f.type === 'PLAYER' && f.player
         ? {
             id: f.player.id,
@@ -74,9 +76,10 @@ export class MerchantFavoritesService {
 
     // Validate reference exists
     if (type === 'PRODUCT') {
-      const product = await this.prisma.cardProduct.findUnique({
+      const product = await this.prisma.product.findUnique({
         where: { id: dto.refId },
       });
+
       if (!product) {
         throw new NotFoundException('Product not found');
       }

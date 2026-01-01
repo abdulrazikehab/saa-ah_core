@@ -14,7 +14,9 @@ import {
   Logger,
 } from '@nestjs/common';
 import { MasterAdminService } from './master-admin.service';
-import { PlanType, Status } from '@prisma/client';
+import { PlanType, Status, TicketStatus, TicketPriority } from '@prisma/client';
+import { CreateComplaintDto, UpdateComplaintDto } from './dto/complaint.dto';
+
 import { AdminApiKeyGuard } from '../guard/admin-api-key.guard';
 import { ApiKeyService } from '../api-key/api-key.service';
 import { CreateApiKeyDto } from '../api-key/dto/create-api-key.dto';
@@ -333,6 +335,27 @@ export class MasterAdminController {
       limit: limit ? parseInt(limit) : undefined,
     });
   }
+
+  // ==================== LIMITS CONFIGURATION ====================
+
+  @Get('limits-config')
+  async getLimitsConfig() {
+    return this.masterAdminService.getLimitsConfig();
+  }
+
+  @Post('limits-config')
+  async updateLimitsConfig(@Body() data: {
+    signupEnabled?: boolean;
+    signinEnabled?: boolean;
+    signupMaxAttempts?: number;
+    signupWindowMs?: number;
+    signinMaxAttempts?: number;
+    signinWindowMs?: number;
+    maxStoresPerUser?: number;
+  }) {
+    return this.masterAdminService.updateLimitsConfig(data);
+  }
+
   // ==================== PLANS MANAGEMENT ====================
 
   @Get('plans')
@@ -623,5 +646,102 @@ export class MasterAdminController {
     @Body() content: any,
   ) {
     return this.masterAdminService.updatePageContent(slug, content);
+  }
+
+  // ==================== PLATFORM CONFIGURATION ====================
+
+  @Get('platform-config')
+  async getPlatformConfig() {
+    return this.masterAdminService.getPlatformConfig();
+  }
+
+  @Post('platform-config')
+  async updatePlatformConfig(@Body() data: any) {
+    return this.masterAdminService.updatePlatformConfig(data);
+  }
+
+
+  // ==================== CLOUDINARY ACCESS ====================
+
+  @Get('cloudinary-access')
+  async getCloudinaryAccessUsers() {
+    return this.masterAdminService.getCloudinaryAccessUsers();
+  }
+
+  @Post('cloudinary-access')
+  async grantCloudinaryAccess(@Body() data: { userIds: string[] }, @Req() req: any) {
+    return this.masterAdminService.updateCloudinaryAccess(data.userIds, true, req.user?.id || 'system-admin');
+  }
+
+  @Delete('cloudinary-access')
+  async revokeCloudinaryAccess(@Body() data: { userIds: string[] }, @Req() req: any) {
+    return this.masterAdminService.updateCloudinaryAccess(data.userIds, false, req.user?.id || 'system-admin');
+  }
+
+  @Get('users/:userId/cloudinary-access')
+  async getUserCloudinaryAccess(@Param('userId') userId: string) {
+    return this.masterAdminService.getUserCloudinaryAccess(userId);
+  }
+
+  // ==================== COMPLAINTS MANAGEMENT ====================
+
+  @Get('complaints')
+  async getAllComplaints(
+    @Query('status') status?: TicketStatus,
+    @Query('priority') priority?: TicketPriority,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.masterAdminService.getAllComplaints({
+      status,
+      priority,
+      search,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
+  }
+
+  @Get('complaints/:id')
+  async getComplaintById(@Param('id') id: string) {
+    return this.masterAdminService.getComplaintById(id);
+  }
+
+  @Post('complaints')
+  async createComplaint(@Body() data: CreateComplaintDto) {
+    return this.masterAdminService.createComplaint(data);
+  }
+
+  @Put('complaints/:id')
+  async updateComplaint(
+    @Param('id') id: string,
+    @Body() data: UpdateComplaintDto,
+  ) {
+    return this.masterAdminService.updateComplaint(id, data);
+  }
+
+  @Delete('complaints/:id')
+  async deleteComplaint(@Param('id') id: string) {
+    return this.masterAdminService.deleteComplaint(id);
+  }
+
+  // ==================== TRANSACTION MANAGEMENT ====================
+
+  @Get('transactions')
+  async getAllTransactions(
+    @Query('status') status?: TransactionStatus,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.masterAdminService.getAllTransactions({
+      status,
+      limit: limit ? parseInt(limit) : undefined,
+      offset: offset ? parseInt(offset) : undefined,
+    });
+  }
+
+  @Post('transactions/:id/refund')
+  async refundTransaction(@Param('id') id: string) {
+    return this.masterAdminService.refundTransaction(id);
   }
 }

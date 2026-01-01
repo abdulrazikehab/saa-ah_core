@@ -469,4 +469,39 @@ export class PublicService {
       return { banks: [] };
     }
   }
+
+  /**
+   * Get published pages for storefront navigation
+   * Returns only published pages that should appear in header/footer navigation
+   */
+  async getNavigationPages(tenantId: string) {
+    try {
+      const pages = await this.prisma.page.findMany({
+        where: {
+          tenantId,
+          isPublished: true,
+        },
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      return {
+        pages: pages.map((page: any) => ({
+          id: page.id,
+          title: page.title,
+          slug: page.slug,
+          url: `/page/${page.slug}`,
+        })),
+      };
+    } catch (error) {
+      this.logger.error(`Failed to fetch navigation pages for tenant ${tenantId}:`, error);
+      return { pages: [] };
+    }
+  }
 }

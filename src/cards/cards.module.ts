@@ -12,9 +12,10 @@ import { WalletService } from './wallet.service';
 import { WalletController } from './wallet.controller';
 import { FavoritesService } from './favorites.service';
 import { FavoritesController } from './favorites.controller';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [PrismaModule, UserModule, HttpModule],
+  imports: [PrismaModule, UserModule, HttpModule, NotificationsModule],
   controllers: [
     CardProductController,
     CardInventoryController,

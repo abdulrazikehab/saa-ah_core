@@ -28,12 +28,32 @@ export class PageController {
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard, TenantRequiredGuard)
-  create(@Request() req: any, @Body() createPageDto: any) {
+  async create(@Request() req: any, @Body() createPageDto: any, @Headers('x-tenant-domain') tenantDomain?: string) {
     const tenantId = this.resolveTenantId(req);
     if (!tenantId || tenantId === 'default' || tenantId === 'system') {
       throw new ForbiddenException('You must set up a market first before creating pages.');
     }
-    return this.pageService.create(tenantId, createPageDto);
+    
+    // Extract subdomain from tenant domain header (e.g., "asus1.localhost" -> "asus1")
+    let subdomain: string | undefined = undefined;
+    if (tenantDomain) {
+      const parts = tenantDomain.split('.');
+      if (parts.length > 0 && parts[0] !== 'localhost' && parts[0] !== 'www') {
+        subdomain = parts[0];
+      }
+    }
+    
+    // Log for debugging
+    console.log('📄 create page - tenantId:', tenantId, {
+      reqTenantId: req.tenantId,
+      userTenantId: req.user?.tenantId,
+      subdomain,
+      tenantDomain,
+      hasUser: !!req.user,
+      hasToken: !!req.headers.authorization,
+    });
+    
+    return this.pageService.create(tenantId, createPageDto, subdomain);
   }
 
   @Get()

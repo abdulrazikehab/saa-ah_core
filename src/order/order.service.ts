@@ -4,6 +4,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantSyncService } from '../tenant/tenant-sync.service';
 import { SupplierInventoryService } from '../supplier/supplier-inventory.service';
 import { CartService } from '../cart/cart.service';
+import { WalletService } from '../cards/wallet.service';
+import { DigitalCardsDeliveryService } from './digital-cards-delivery.service';
+import { NotificationsService } from '../notifications/notifications.service';
+
 
 export interface CreateOrderDto {
   customerEmail: string;
@@ -11,8 +15,13 @@ export interface CreateOrderDto {
   shippingAddress: any;
   billingAddress?: any;
   customerPhone?: string;
-  notes?: string;
   ipAddress?: string;
+}
+
+export interface OrderPaymentOptions {
+  useWalletBalance?: boolean;
+  paymentMethod?: string;
+  userId?: string;
 }
 
 export interface OrderResponseDto {
@@ -23,6 +32,8 @@ export interface OrderResponseDto {
   customerPhone?: string;
   totalAmount: number;
   status: string;
+  paymentMethod?: string;
+  paymentStatus?: string;
   shippingAddress: any;
   billingAddress?: any;
   notes?: string;
@@ -30,6 +41,10 @@ export interface OrderResponseDto {
   createdAt: Date;
   updatedAt: Date;
   orderItems: OrderItemDto[];
+  deliveryFiles?: {
+    excelFileUrl?: string;
+    textFileUrl?: string;
+  };
 }
 
 export interface OrderItemDto {
@@ -52,11 +67,47 @@ export class OrderService {
     private tenantSyncService: TenantSyncService,
     private supplierInventoryService: SupplierInventoryService,
     private cartService: CartService,
+    private walletService: WalletService,
+    private digitalCardsDeliveryService: DigitalCardsDeliveryService,
+    private notificationsService: NotificationsService,
   ) {}
 
-  async createOrder(tenantId: string, cartId: string, orderData: CreateOrderDto): Promise<OrderResponseDto> {
+
+  async createOrder(tenantId: string, cartId: string, orderData: CreateOrderDto, paymentOptions?: OrderPaymentOptions): Promise<OrderResponseDto> {
     await this.tenantSyncService.ensureTenantExists(tenantId);
+    
+    // Validate wallet balance BEFORE creating order if wallet payment is requested
+    if (paymentOptions?.useWalletBalance && paymentOptions?.userId) {
+      // Calculate cart total first to check balance
+      const cart = await this.prisma.cart.findFirst({
+        where: { id: cartId, tenantId },
+        include: {
+          cartItems: {
+            include: {
+              product: true,
+              productVariant: true,
+            },
+          },
+        },
+      });
+
+      if (cart) {
+        const cartTotal = await this.cartService.calculateCartTotal(cart, orderData.shippingAddress);
+        const totalAmount = Number(cartTotal.total);
+        
+        const hasBalance = await this.walletService.hasSufficientBalance(
+          paymentOptions.userId,
+          totalAmount
+        );
+
+        if (!hasBalance) {
+          throw new BadRequestException('رصيد المحفظة غير كافٍ لإتمام هذه العملية. يرجى شحن رصيدك أو اختيار طريقة دفع أخرى.');
+        }
+      }
+    }
+    
     // Get cart with items
+    this.logger.log(`Looking for cart - cartId: ${cartId}, tenantId: ${tenantId}`);
     const cart = await this.prisma.cart.findFirst({
       where: {
         id: cartId,
@@ -73,11 +124,24 @@ export class OrderService {
     });
 
     if (!cart) {
-      throw new NotFoundException('Cart not found');
+      // Try to find the cart without tenant filter to provide better error message
+      const cartAnyTenant = await this.prisma.cart.findFirst({
+        where: { id: cartId },
+        select: { id: true, tenantId: true, sessionId: true, userId: true },
+      });
+      if (cartAnyTenant) {
+        this.logger.error(`Cart ${cartId} exists but belongs to tenant ${cartAnyTenant.tenantId}, not ${tenantId}. sessionId: ${cartAnyTenant.sessionId}, userId: ${cartAnyTenant.userId}`);
+        throw new NotFoundException(`السلة غير موجودة في هذا المتجر. يرجى التأكد من أنك تستخدم نفس المتجر الذي أضفت منه المنتجات.`);
+      }
+      this.logger.error(`Cart ${cartId} not found in any tenant`);
+      throw new NotFoundException('السلة غير موجودة');
     }
 
+    this.logger.log(`Found cart ${cart.id} with ${cart.cartItems.length} items, tenantId: ${cart.tenantId}, sessionId: ${cart.sessionId}, userId: ${cart.userId}`);
+
     if (cart.cartItems.length === 0) {
-      throw new BadRequestException('Cart is empty');
+      this.logger.error(`Cart ${cartId} has 0 items! tenantId: ${tenantId}`);
+      throw new BadRequestException('السلة فارغة. يرجى إضافة منتجات إلى السلة قبل إتمام الطلب.');
     }
 
     // Prepare items for supplier validation
@@ -101,7 +165,7 @@ export class OrderService {
     );
 
     if (!inventoryValid) {
-      throw new BadRequestException('Insufficient inventory. Please check product availability.');
+      throw new BadRequestException('المخزون غير كافٍ. يرجى التحقق من توفر المنتج.');
     }
 
     // Re-fetch cart items after potential supplier sync
@@ -118,7 +182,7 @@ export class OrderService {
     });
 
     if (!updatedCart) {
-      throw new NotFoundException('Cart not found');
+      throw new NotFoundException('السلة غير موجودة');
     }
 
     // Build inventory checks with updated quantities
@@ -126,7 +190,7 @@ export class OrderService {
       if (item.productVariant) {
         if (item.productVariant.inventoryQuantity < item.quantity) {
           throw new BadRequestException(
-            `Insufficient inventory for ${item.product.name} - ${item.productVariant.name}`
+            `المخزون غير كافٍ للمنتج ${item.product.name} - ${item.productVariant.name}`
           );
         }
         inventoryChecks.push({
@@ -163,6 +227,15 @@ export class OrderService {
         });
       }
 
+      // Store payment method in billingAddress JSON for retrieval later (since notes field doesn't exist)
+      let billingAddress = orderData.billingAddress || orderData.shippingAddress || {};
+      if (typeof billingAddress === 'object' && !Array.isArray(billingAddress)) {
+        billingAddress = {
+          ...billingAddress,
+          _paymentMethod: paymentOptions?.paymentMethod,
+        };
+      }
+
       // Create order with all breakdown fields
       const order = await tx.order.create({
         data: {
@@ -177,10 +250,10 @@ export class OrderService {
           shippingAmount,
           totalAmount,
           shippingAddress: orderData.shippingAddress,
-          billingAddress: orderData.billingAddress || orderData.shippingAddress,
-          notes: orderData.notes,
+          billingAddress: billingAddress,
           ipAddress: orderData.ipAddress,
           status: 'PENDING',
+          paymentStatus: 'PENDING', // Will be updated to SUCCEEDED after wallet debit succeeds
         },
       });
 
@@ -211,12 +284,116 @@ export class OrderService {
       return { order, orderItems };
     });
 
+    // Handle wallet balance payment if requested
+    if (paymentOptions?.useWalletBalance && paymentOptions?.userId) {
+      try {
+        // Balance was already checked before order creation, but double-check as safety
+        const hasBalance = await this.walletService.hasSufficientBalance(
+          paymentOptions.userId,
+          totalAmount
+        );
+
+        if (!hasBalance) {
+          // Update order status to indicate payment failed
+          await this.prisma.order.update({
+            where: { id: order.order.id },
+            data: {
+              status: 'CANCELLED',
+              paymentStatus: 'FAILED',
+            },
+          });
+          throw new BadRequestException('رصيد المحفظة غير كافٍ لإتمام هذه العملية. يرجى شحن رصيدك أو اختيار طريقة دفع أخرى.');
+        }
+
+        // Deduct wallet balance
+        await this.walletService.debit(
+          paymentOptions.userId,
+          totalAmount,
+          `Payment for order ${orderNumber}`,
+          `دفع للطلب ${orderNumber}`,
+          order.order.id,
+        );
+
+        // Update order status to CONFIRMED and payment status to SUCCEEDED
+        await this.prisma.order.update({
+          where: { id: order.order.id },
+          data: {
+            status: 'CONFIRMED',
+            paymentStatus: 'SUCCEEDED',
+            paidAt: new Date(),
+          },
+        });
+
+        this.logger.log(`Wallet balance deducted: ${totalAmount} for order ${orderNumber}`);
+
+        // Process digital cards delivery if this is a digital cards store
+        // This should happen AFTER payment is confirmed
+        try {
+          this.logger.log(`Processing digital cards delivery for order ${orderNumber}, tenant ${tenantId}`);
+          
+          const deliveryResult = await this.digitalCardsDeliveryService.processDigitalCardsDelivery(
+            tenantId,
+            order.order.id,
+            paymentOptions.userId || null,
+            order.orderItems.map(item => ({
+              productId: item.productId,
+              quantity: item.quantity,
+              productName: item.productName,
+            })),
+          );
+
+          if (deliveryResult) {
+            this.logger.log(`✅ Digital cards delivery processed for order ${orderNumber}: ${deliveryResult.serialNumbers.length} cards, Excel: ${deliveryResult.excelFileUrl}, Text: ${deliveryResult.textFileUrl}`);
+          } else {
+            this.logger.warn(`⚠️ Digital cards delivery returned null for order ${orderNumber} - may not be a digital cards store or no cards available`);
+          }
+        } catch (error: any) {
+          this.logger.error(`❌ Failed to process digital cards delivery for order ${orderNumber}:`, error);
+          // Don't fail the order if digital cards delivery fails, but log the error
+        }
+      } catch (error: any) {
+        this.logger.error(`Failed to process wallet payment for order ${orderNumber}:`, error);
+        // If it's a BadRequestException (insufficient balance), rethrow it
+        if (error instanceof BadRequestException) {
+          throw error;
+        }
+        // For other errors, log but don't fail the order creation
+        // Note: We can't store notes in Order model (field doesn't exist in schema)
+        this.logger.warn(`Wallet payment error for order ${order.order.id}: ${error.message}`);
+      }
+    }
+
     this.logger.log(`Order ${orderNumber} created for tenant ${tenantId}`);
 
-    return this.mapToOrderResponseDto(order.order, order.orderItems);
+    // Send notification to merchant
+    try {
+      await this.notificationsService.sendNotification({
+        tenantId,
+        type: 'ORDER',
+        titleEn: `New Order: ${orderNumber}`,
+        titleAr: `طلب جديد: ${orderNumber}`,
+        bodyEn: `A new order has been placed for ${totalAmount} SAR.`,
+        bodyAr: `تم تقديم طلب جديد بمبلغ ${totalAmount} ريال سعودي.`,
+        data: { orderId: order.order.id, orderNumber }
+      });
+    } catch (error) {
+      this.logger.error(`Failed to send order notification: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    // Clear cart after successful order creation
+    try {
+      await this.cartService.clearCart(tenantId, cartId);
+      this.logger.log(`Cart ${cartId} cleared after order ${orderNumber}`);
+    } catch (error) {
+      this.logger.error(`Failed to clear cart ${cartId} after order creation:`, error);
+      // Don't fail the order if cart clearing fails
+    }
+
+    return await this.mapToOrderResponseDto(order.order, order.orderItems);
+
   }
 
-  async getOrders(tenantId: string, page: number = 1, limit: number = 10, status?: string) {
+  async getOrders(tenantId: string, page: number = 1, limit: number = 10, status?: string, customerEmail?: string) {
     // Coerce query parameters to numbers to avoid NaN
     const pageNum = Number(page) || 1;
     const limitNum = Number(limit) || 10;
@@ -225,6 +402,10 @@ export class OrderService {
     const whereClause: any = { tenantId };
     if (status) {
       whereClause.status = status;
+    }
+    // Filter by customer email if provided (for customer-facing requests)
+    if (customerEmail) {
+      whereClause.customerEmail = customerEmail;
     }
 
     const [orders, total] = await Promise.all([
@@ -237,6 +418,7 @@ export class OrderService {
               productVariant: true,
             },
           },
+          paymentMethod: true,
         },
         skip,
         take: limitNum,
@@ -247,11 +429,15 @@ export class OrderService {
       }),
     ]);
 
-    return {
-      data: orders.map((order: { orderItems: any[]; }) => this.mapToOrderResponseDto(
+    const mappedOrders = await Promise.all(
+      orders.map((order: { orderItems: any[]; }) => this.mapToOrderResponseDto(
         order, 
         order.orderItems
-      )),
+      ))
+    );
+
+    return {
+      data: mappedOrders,
       meta: {
         page: pageNum,
         limit: limitNum,
@@ -275,6 +461,7 @@ export class OrderService {
             productVariant: true,
           },
         },
+        paymentMethod: true,
       },
     });
 
@@ -282,7 +469,7 @@ export class OrderService {
       throw new NotFoundException('Order not found');
     }
 
-    return this.mapToOrderResponseDto(order, order.orderItems);
+    return await this.mapToOrderResponseDto(order, order.orderItems);
   }
 
   async updateOrderStatus(tenantId: string, orderId: string, status: string): Promise<OrderResponseDto> {
@@ -313,12 +500,28 @@ export class OrderService {
             productVariant: true,
           },
         },
+        paymentMethod: true,
       },
     });
 
     this.logger.log(`Order ${order.orderNumber} status updated to ${status}`);
 
-    return this.mapToOrderResponseDto(updatedOrder, updatedOrder.orderItems);
+    // Send notification to merchant about status update
+    try {
+      await this.notificationsService.sendNotification({
+        tenantId,
+        type: 'ORDER',
+        titleEn: `Order Status Updated: ${order.orderNumber}`,
+        titleAr: `تحديث حالة الطلب: ${order.orderNumber}`,
+        bodyEn: `Order ${order.orderNumber} is now ${status}.`,
+        bodyAr: `الطلب ${order.orderNumber} الآن في حالة ${status}.`,
+        data: { orderId: order.id, orderNumber: order.orderNumber, status }
+      });
+    } catch (error) {
+      this.logger.error(`Failed to send order status notification: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    return await this.mapToOrderResponseDto(updatedOrder, updatedOrder.orderItems);
   }
 
   async cancelOrder(tenantId: string, orderId: string, reason?: string): Promise<OrderResponseDto> {
@@ -349,7 +552,7 @@ export class OrderService {
     }
 
     // Restore inventory in transaction
-    const updatedOrder = await this.prisma.$transaction(async (tx: { productVariant: { update: (arg0: { where: { id: any; }; data: { inventoryQuantity: { increment: any; }; }; }) => any; }; order: { update: (arg0: { where: { id: string; }; data: { status: string; notes: any; }; include: { orderItems: { include: { product: boolean; productVariant: boolean; }; }; }; }) => any; }; }) => {
+    const updatedOrder = await this.prisma.$transaction(async (tx: any) => {
       // Restore inventory for variants
       for (const item of order.orderItems) {
         if (item.productVariant) {
@@ -369,7 +572,7 @@ export class OrderService {
         where: { id: orderId },
         data: { 
           status: 'CANCELLED',
-          notes: reason ? `${order.notes || ''}\nCancelled: ${reason}`.trim() : order.notes,
+          // Note: notes field doesn't exist in Order schema, so we can't store cancellation reason
         },
         include: {
           orderItems: {
@@ -378,13 +581,14 @@ export class OrderService {
               productVariant: true,
             },
           },
+          paymentMethod: true,
         },
       });
     });
 
     this.logger.log(`Order ${order.orderNumber} cancelled`);
 
-    return this.mapToOrderResponseDto(updatedOrder, updatedOrder.orderItems);
+    return await this.mapToOrderResponseDto(updatedOrder, updatedOrder.orderItems);
   }
 
   async getOrderStats(tenantId: string) {
@@ -487,8 +691,12 @@ export class OrderService {
       }),
     ]);
 
+    const mappedOrders = await Promise.all(
+      orders.map(async (order: { orderItems: any[]; }) => await this.mapToOrderResponseDto(order, order.orderItems))
+    );
+    
     return {
-      data: orders.map((order: { orderItems: any[]; }) => this.mapToOrderResponseDto(order, order.orderItems)),
+      data: mappedOrders,
       meta: {
         page: pageNum,
         limit: limitNum,
@@ -499,24 +707,98 @@ export class OrderService {
     };
   }
 
+  /**
+   * Process digital cards delivery after payment success
+   * Called from payment webhooks
+   */
+  async processDigitalCardsDeliveryAfterPayment(orderId: string): Promise<void> {
+    try {
+      const order = await this.prisma.order.findUnique({
+        where: { id: orderId },
+        include: {
+          orderItems: true,
+        },
+      });
+
+      if (!order) {
+        this.logger.warn(`Order ${orderId} not found for digital cards delivery`);
+        return;
+      }
+
+      // Get user ID if order has a customer
+      let userId: string | null = null;
+      if (order.customerEmail) {
+        const user = await this.prisma.user.findFirst({
+          where: { email: order.customerEmail, tenantId: order.tenantId },
+        });
+        userId = user?.id || null;
+      }
+
+      const deliveryResult = await this.digitalCardsDeliveryService.processDigitalCardsDelivery(
+        order.tenantId,
+        orderId,
+        userId,
+        order.orderItems.map(item => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          productName: item.productName,
+        })),
+      );
+
+      if (deliveryResult) {
+        this.logger.log(`Digital cards delivery processed for order ${order.orderNumber}`);
+      }
+    } catch (error: any) {
+      this.logger.error(`Failed to process digital cards delivery for order ${orderId}:`, error);
+      // Don't throw - this is called from webhooks and shouldn't fail the payment
+    }
+  }
+
   private generateOrderNumber(): string {
     const timestamp = Date.now().toString();
     const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
     return `ORD-${timestamp}-${random}`;
   }
 
-  private mapToOrderResponseDto(order: any, orderItems: any[]): OrderResponseDto {
+  private async mapToOrderResponseDto(order: any, orderItems: any[]): Promise<OrderResponseDto> {
+    // Extract payment method from billingAddress JSON if stored there
+    let paymentMethod: string | undefined;
+    let cleanBillingAddress = order.billingAddress;
+    
+    // Check billingAddress for stored payment method
+    if (order.billingAddress && typeof order.billingAddress === 'object' && order.billingAddress._paymentMethod) {
+      paymentMethod = order.billingAddress._paymentMethod;
+      // Remove internal _paymentMethod field from billingAddress before returning
+      const { _paymentMethod, ...rest } = order.billingAddress;
+      cleanBillingAddress = rest;
+    }
+    
+    // Also check if order has paymentMethod relation
+    if (!paymentMethod && order.paymentMethod) {
+      paymentMethod = order.paymentMethod.provider || order.paymentMethod.name;
+    }
+
+    // Get delivery files for digital cards orders
+    let deliveryFiles: { excelFileUrl?: string; textFileUrl?: string } | undefined;
+    try {
+      const files = await this.digitalCardsDeliveryService.getDeliveryFiles(order.id);
+      deliveryFiles = files || undefined;
+    } catch (error) {
+      this.logger.warn(`Failed to get delivery files for order ${order.id}:`, error);
+    }
+
     return {
       id: order.id,
       orderNumber: order.orderNumber,
       customerEmail: order.customerEmail,
       customerName: order.customerName,
       customerPhone: order.customerPhone,
-      totalAmount: order.totalAmount,
+      totalAmount: Number(order.totalAmount),
       status: order.status,
+      paymentMethod,
+      paymentStatus: order.paymentStatus || 'PENDING',
       shippingAddress: order.shippingAddress,
-      billingAddress: order.billingAddress,
-      notes: order.notes,
+      billingAddress: cleanBillingAddress,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
       orderItems: orderItems.map(item => ({
@@ -526,9 +808,10 @@ export class OrderService {
         productName: item.productName,
         variantName: item.variantName,
         quantity: item.quantity,
-        price: item.price,
-        total: item.price * item.quantity,
+        price: Number(item.price),
+        total: Number(item.price) * item.quantity,
       })),
+      deliveryFiles,
     };
   }
 }

@@ -97,6 +97,8 @@ export class ProductResponseDto {
     };
     discountRate: number;
     isPrimary: boolean;
+    lastPrice?: number;
+    lastPriceCheck?: Date;
   }>;
   unit?: {
     id: string;

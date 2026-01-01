@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios';
 import { PrismaModule } from '../prisma/prisma.module';
 import { CardsModule } from '../cards/cards.module';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module';
@@ -37,11 +38,12 @@ import { InvoiceController } from './controllers/invoice.controller';
 import { MerchantDashboardController } from './controllers/merchant-dashboard.controller';
 import { MerchantSessionController } from './controllers/merchant-session.controller';
 import { MerchantWalletController } from './controllers/merchant-wallet.controller';
+import { MerchantEmployeesController } from './controllers/merchant-employees.controller';
 import { MerchantSyncController } from './controllers/merchant-sync.controller';
 import { MerchantSearchController } from './controllers/merchant-search.controller';
 
 @Module({
-  imports: [PrismaModule, CardsModule, CloudinaryModule, UserModule],
+  imports: [PrismaModule, CardsModule, CloudinaryModule, UserModule, HttpModule],
   controllers: [
     MerchantAuthController,
     MerchantProfileController,
@@ -58,6 +60,7 @@ import { MerchantSearchController } from './controllers/merchant-search.controll
     MerchantDashboardController,
     MerchantSessionController,
     MerchantWalletController,
+    MerchantEmployeesController,
     MerchantSyncController,
     MerchantSearchController,
   ],

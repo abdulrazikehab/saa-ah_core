@@ -93,4 +93,20 @@ export class PublicController {
     
     return this.publicService.getBanksForCheckout(effectiveTenantId);
   }
+
+  /**
+   * Get published pages for storefront navigation
+   * Returns only published pages that should appear in navigation
+   */
+  @Get('navigation-pages')
+  async getNavigationPages(@Request() req: any, @Query('tenantId') tenantId?: string) {
+    // Priority: 1. Query param, 2. Middleware (req.tenantId), 3. Request header
+    const effectiveTenantId = tenantId || req.tenantId || req.headers['x-tenant-id'];
+    
+    if (!effectiveTenantId || effectiveTenantId === 'default' || effectiveTenantId === 'system') {
+      return { pages: [] };
+    }
+    
+    return this.publicService.getNavigationPages(effectiveTenantId);
+  }
 }

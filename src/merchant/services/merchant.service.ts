@@ -209,6 +209,7 @@ export class MerchantService {
       return {
         merchantId: merchant.id,
         tenantId: merchant.tenantId,
+        userId: merchant.userId,
         isOwner: true,
         employeeId: null,
         status: merchant.status,
@@ -227,6 +228,7 @@ export class MerchantService {
       return {
         merchantId: employee.merchantId,
         tenantId: employee.merchant.tenantId,
+        userId: employee.userId,
         isOwner: false,
         employeeId: employee.id,
         status: employee.merchant.status,
@@ -238,7 +240,7 @@ export class MerchantService {
   }
 
   // Validate merchant access
-  async validateMerchantAccess(userId: string, requiredPermission?: string, userData?: { email?: string; name?: string; role?: string; tenantId?: string }) {
+  async validateMerchantAccess(userId: string, requiredPermission?: string, userData?: { email?: string; name?: string; role?: string; tenantId?: string; type?: string }) {
     let context = await this.getMerchantContext(userId);
 
     if (!context) {
@@ -353,6 +355,13 @@ export class MerchantService {
           );
         }
       } else if (!effectiveTenantId) {
+        // Check if user is a customer - customers don't need tenantId
+        if (effectiveRole === 'CUSTOMER' || userData?.type === 'customer') {
+          this.logger.log(`Customer ${userId} accessing merchant features - tenantId not required for customers`);
+          // Return null context for customers - they use customerId instead
+          return null;
+        }
+        
         // User doesn't have a tenant - they need to create a store first
         this.logger.warn(`User ${userId} does not have a tenant. They need to create a store first.`);
         throw new BadRequestException(

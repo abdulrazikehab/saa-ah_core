@@ -28,14 +28,31 @@ export class TaxService {
     country?: string, 
     state?: string
   ): Promise<TaxCalculationResult> {
-    // Verify tenant exists
+    // Verify tenant exists and check if tax is enabled
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { id: true }
+      select: { id: true, settings: true }
     });
 
     if (!tenant) {
       throw new NotFoundException(`Tenant with ID ${tenantId} not found`);
+    }
+
+    // Check if tax is enabled in tenant settings
+    const tenantSettings = (tenant.settings || {}) as any;
+    const taxEnabled = tenantSettings.taxEnabled !== false; // Default to true if not set
+
+    // If tax is disabled, return zero tax
+    if (!taxEnabled) {
+      return {
+        originalAmount: Number(amount),
+        taxAmount: 0,
+        totalAmount: Number(amount),
+        taxRate: 0,
+        country: country || undefined,
+        state: state || undefined,
+        taxRateId: undefined
+      };
     }
 
     // Get applicable tax rate

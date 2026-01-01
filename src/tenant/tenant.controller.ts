@@ -1,9 +1,10 @@
-import { Controller, Get, Post, Body, Param, Delete, UseGuards, Request, BadRequestException, ConflictException, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Delete, UseGuards, Request, Query, BadRequestException, ConflictException, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { TenantService } from './tenant.service';
 import { TenantSyncService } from './tenant-sync.service';
 import { AuthClientService } from './auth-client.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthenticatedRequest } from '../types/request.types';
+import { Public } from '../auth/public.decorator';
 import { TemplateService } from '../template/template.service';
 import { PageService } from '../page/page.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -474,6 +475,12 @@ export class TenantController {
       subdomain: body.subdomain,
     });
     return { message: 'Tenant synchronized successfully' };
+  }
+
+  @Public()
+  @Get('search')
+  async search(@Query('q') query: string) {
+    return this.tenantService.searchTenants(query);
   }
 
   @Get(':id')

@@ -315,6 +315,14 @@ export class HyperpayService {
     });
 
     this.logger.log(`Payment successful for order ${orderId}, tenant ${tenantId}`);
+
+    // Process digital cards delivery after successful payment
+    try {
+      await this.orderService.processDigitalCardsDeliveryAfterPayment(orderId);
+    } catch (error: any) {
+      this.logger.error(`Failed to process digital cards delivery after payment for order ${orderId}:`, error);
+      // Don't fail the payment processing if delivery fails
+    }
   }
 
   private async handlePendingPayment(

@@ -140,3 +140,36 @@ model CheckoutSettings {
 //   guestEmail  String?
 //   guestName   String?
 //   guestPhone  String?
+
+model PurchaseLimits {
+  id       String  @id @default(cuid())
+  tenantId String  @unique
+  
+  // Default limits for guest/unverified customers
+  defaultLimitAmount        Decimal @default(1000)
+  
+  // Limits per customer layer (tier) - stored as JSON
+  // Format: { "tierId": { "baseLimit": 5000, "increasePerPurchase": 100 } }
+  tierLimits                Json    @default("{}")
+  
+  // Purchase count tracking for limit increases
+  // Format: { "customerId": { "purchaseCount": 5, "currentLimit": 5500 } }
+  customerLimitTracking     Json    @default("{}")
+  
+  // Credit card tracking - hash of last 4 digits + expiration for same card detection
+  // Format: { "cardHash": { "customerEmail": "email@example.com", "usageCount": 3, "totalAmount": 5000 } }
+  creditCardTracking        Json    @default("{}")
+  
+  // Enable credit card checking
+  enableCreditCardTracking  Boolean @default(true)
+  
+  // Enable purchase count increase
+  enablePurchaseCountIncrease Boolean @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@map("purchase_limits")
+}

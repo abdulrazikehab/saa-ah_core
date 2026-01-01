@@ -21,7 +21,8 @@ export class ProductVariantDto {
 
   @IsNumber()
   @Min(0)
-  inventoryQuantity!: number;
+  @IsOptional()
+  inventoryQuantity?: number;
 }
 
 export class ProductImageDto {
@@ -74,6 +75,10 @@ export class CreateProductDto {
   @Min(0)
   @IsOptional()
   costPerItem?: number;
+
+  @IsNumber()
+  @IsOptional()
+  stockCount?: number;
 
   @IsBoolean()
   @IsOptional()
@@ -309,4 +314,9 @@ export class ProductSupplierDto {
   @IsBoolean()
   @IsOptional()
   isPrimary?: boolean;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  price?: number; // Supplier price for this product
 }

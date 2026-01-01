@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { TenantRequiredGuard } from '../guard/tenant-required.guard';
 import { CloudinaryService, CloudinaryUploadResponse } from '../cloudinary/cloudinary.service';
 import { AuthenticatedRequest } from '../types/request.types';
+import { validateFileSafety } from '../utils/file-validation.util';
 
 @Controller('upload')
 @UseGuards(JwtAuthGuard)
@@ -65,6 +66,9 @@ export class UploadController {
     if (!files || files.length === 0) {
       throw new BadRequestException('No files uploaded');
     }
+
+    // Validate file safety (Magic Numbers)
+    files.forEach(file => validateFileSafety(file));
 
     // Get tenantId from multiple sources
     const tenantId = req.user?.tenantId || req.tenantId;
@@ -141,6 +145,9 @@ export class UploadController {
     if (!files || files.length === 0) {
       throw new BadRequestException('No images uploaded');
     }
+
+    // Validate file safety (Magic Numbers)
+    files.forEach(file => validateFileSafety(file));
 
     // Get tenantId from multiple sources
     const tenantId = req.user?.tenantId || req.tenantId;

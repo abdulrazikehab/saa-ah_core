@@ -69,15 +69,15 @@ export class MerchantProductController {
       description: product.description,
       descriptionAr: product.descriptionAr,
       image: product.image,
-      denomination: Number(product.denomination),
-      currency: product.currency,
+      denomination: 0, // Not applicable for Product
+      currency: 'SAR', // Fallback
       wholesalePrice: Number(product.wholesalePrice),
       retailPrice: Number(product.retailPrice),
-      profitMargin: Number(product.profitMargin),
+      profitMargin: 0, // Not applicable for Product
       taxRate: Number(product.taxRate),
       minQuantity: product.minQuantity,
       maxQuantity: product.maxQuantity,
-      isActive: product.isActive,
+      isActive: product.isAvailable,
       isAvailable: product.isAvailable,
       availableStock: product.availableStock,
       brand: product.brand ? {
@@ -86,12 +86,9 @@ export class MerchantProductController {
         nameAr: product.brand.nameAr,
         logo: product.brand.logo,
       } : null,
-      category: product.category ? {
-        id: product.category.id,
-        name: product.category.name,
-        nameAr: product.category.nameAr,
-      } : null,
+      category: null, // Product categories are handled differently
     };
+
   }
 
   @Get(':id/price-history')

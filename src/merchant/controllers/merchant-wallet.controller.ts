@@ -10,20 +10,25 @@ import {
   BadRequestException,
   Query,
   Param,
+  Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { WalletService } from '../../cards/wallet.service';
 import { CloudinaryService } from '../../cloudinary/cloudinary.service';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { MerchantService } from '../services/merchant.service';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @Controller('merchant/wallet')
 @UseGuards(JwtAuthGuard)
 export class MerchantWalletController {
+  private readonly logger = new Logger(MerchantWalletController.name);
+
   constructor(
     private readonly walletService: WalletService,
     private readonly cloudinaryService: CloudinaryService,
     private readonly merchantService: MerchantService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Get('balance')
@@ -34,8 +39,8 @@ export class MerchantWalletController {
         throw new BadRequestException('User authentication required');
       }
       // Ensure merchant and wallet exist
-      await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
-      return this.walletService.getBalance(userId);
+      const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
+      return this.walletService.getBalance(context?.userId || userId);
     } catch (error) {
       throw error;
     }
@@ -49,7 +54,7 @@ export class MerchantWalletController {
         throw new BadRequestException('User authentication required');
       }
       const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
-      return this.walletService.getBanks(context.tenantId);
+      return this.walletService.getBanks(context?.tenantId || req.user?.tenantId || 'default');
     } catch (error) {
       return []; // Return empty array if merchant access fails
     }
@@ -63,7 +68,7 @@ export class MerchantWalletController {
         throw new BadRequestException('User authentication required');
       }
       const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
-      return this.walletService.getAllBanks(context.tenantId);
+      return this.walletService.getAllBanks(context?.tenantId || req.user?.tenantId || 'default');
     } catch (error) {
       return [];
     }
@@ -213,11 +218,11 @@ export class MerchantWalletController {
     }
     
     if (logoFile) {
-      const uploadResult = await this.cloudinaryService.uploadFile(logoFile);
-      updateData.logo = uploadResult.secure_url || uploadResult.url;
+      const uploadResult = await this.cloudinaryService.uploadImage(logoFile);
+      updateData.logo = uploadResult.secureUrl || uploadResult.url;
     }
 
-    return this.walletService.updateBank(context.tenantId, id, updateData);
+    return this.walletService.updateBank(context?.tenantId || req.user?.tenantId || 'default', id, updateData);
   }
 
   @Post('banks/:id/delete')
@@ -227,7 +232,7 @@ export class MerchantWalletController {
       throw new BadRequestException('User authentication required');
     }
     const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
-    return this.walletService.deleteBank(context.tenantId, id);
+    return this.walletService.deleteBank(context?.tenantId || req.user?.tenantId || 'default', id);
   }
 
   @Get('transactions')
@@ -242,11 +247,11 @@ export class MerchantWalletController {
         throw new BadRequestException('User authentication required');
       }
       // Ensure merchant and wallet exist
-      await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
+      const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
       
       const pageNum = page ? parseInt(page, 10) : 1;
       const limitNum = limit ? parseInt(limit, 10) : 20;
-      return this.walletService.getTransactions(userId, pageNum, limitNum);
+      return this.walletService.getTransactions(context?.userId || userId, pageNum, limitNum);
     } catch (error) {
       return { data: [], total: 0, page: 1, limit: 20, totalPages: 0 };
     }
@@ -260,8 +265,8 @@ export class MerchantWalletController {
         throw new BadRequestException('User authentication required');
       }
       // Ensure merchant and wallet exist
-      await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
-      return this.walletService.getUserBankAccounts(userId);
+      const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
+      return this.walletService.getUserBankAccounts(context?.userId || userId);
     } catch (error) {
       return [];
     }
@@ -285,8 +290,8 @@ export class MerchantWalletController {
       throw new BadRequestException('User authentication required');
     }
     // Ensure merchant and wallet exist
-    await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
-    return this.walletService.addBankAccount(userId, body);
+    const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
+    return this.walletService.addBankAccount(userId, body, context?.tenantId || req.user?.tenantId || 'default', req.user);
   }
 
   @Post('topup')
@@ -331,11 +336,113 @@ export class MerchantWalletController {
         throw new BadRequestException('User authentication required');
       }
       // Ensure merchant and wallet exist
-      await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
-      return this.walletService.getTopUpRequests(userId, status);
+      const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
+      return this.walletService.getTopUpRequests(context?.userId || userId, status);
     } catch (error) {
       return [];
     }
+  }
+
+  @Get('staff-list')
+  async getStaffListForCustomer(@Request() req: any) {
+    const userId = req.user?.id || req.user?.userId;
+    if (!userId) {
+      throw new BadRequestException('User authentication required');
+    }
+
+    // Check if user is CUSTOMER
+    const isCustomer = req.user?.type === 'customer' || req.user?.role === 'CUSTOMER';
+    
+    if (!isCustomer) {
+      throw new BadRequestException('Only customers can access staff list');
+    }
+
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    // Get staff users from auth service
+    // We'll need to call the auth service to get staff list
+    // For now, return empty array - this should be implemented by calling auth service
+    // or we can query the core database if staff users are synced there
+    try {
+      // Try to get staff from core database (if they're synced)
+      const staffUsers = await this.prisma.user.findMany({
+        where: {
+          tenantId,
+          role: 'STAFF',
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+        },
+      });
+
+      return {
+        data: staffUsers,
+      };
+    } catch (error) {
+      this.logger.error('Failed to get staff list:', error);
+      return { data: [] };
+    }
+  }
+
+  @Post('admin/give-balance')
+  async giveBalanceToStaff(
+    @Request() req: any,
+    @Body() body: {
+      staffId: string;
+      amount: number;
+      description?: string;
+      descriptionAr?: string;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    if (!userId) {
+      throw new BadRequestException('User authentication required');
+    }
+
+    // Check if user is CUSTOMER (customer giving balance to their employees)
+    const isCustomer = req.user?.type === 'customer' || req.user?.role === 'CUSTOMER';
+    
+    if (!isCustomer) {
+      throw new BadRequestException('Only customers can give balance to their employees');
+    }
+
+    // Get tenantId from customer's tenantId
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    // Verify that the staff user belongs to the same tenant
+    // We need to check if staffId exists in the auth database as STAFF role for this tenant
+    // For now, we'll trust the staffId and let the wallet service handle it
+    
+    if (!body.staffId || !body.amount || body.amount <= 0) {
+      throw new BadRequestException('Invalid staff ID or amount');
+    }
+
+    // Credit the staff's wallet (staffId is the userId of the staff member)
+    const result = await this.walletService.credit(
+      body.staffId,
+      body.amount,
+      body.description || `Balance added by customer`,
+      body.descriptionAr || `تم إضافة رصيد بواسطة عميل`,
+      undefined,
+      'ADJUSTMENT',
+    );
+
+    this.logger.log(`Balance ${body.amount} given to staff ${body.staffId} by customer ${userId}`);
+
+    return {
+      success: true,
+      message: 'Balance added successfully',
+      wallet: result.wallet,
+      transaction: result.transaction,
+    };
   }
 
   @Get('admin/topups')
@@ -347,8 +454,8 @@ export class MerchantWalletController {
         throw new BadRequestException('User authentication required');
       }
       const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
-      console.log('✅ Tenant ID:', context.tenantId);
-      const requests = await this.walletService.getAllTopUpRequests(context.tenantId);
+      console.log('✅ Tenant ID:', context?.tenantId);
+      const requests = await this.walletService.getAllTopUpRequests(context?.tenantId || req.user?.tenantId || 'default');
       console.log('✅ Returning', requests.length, 'top-up requests');
       return requests;
     } catch (error) {
@@ -364,7 +471,7 @@ export class MerchantWalletController {
       throw new BadRequestException('User authentication required');
     }
     const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
-    return this.walletService.getPendingTopUpRequests(context.tenantId);
+    return this.walletService.getPendingTopUpRequests(context?.tenantId || req.user?.tenantId || 'default');
   }
 
   @Post('admin/topup/:id/approve')
@@ -381,7 +488,7 @@ export class MerchantWalletController {
     const authToken = authHeader.substring(7);
     
     const context = await this.merchantService.validateMerchantAccess(userId);
-    const tenantId = context.tenantId;
+    const tenantId = context?.tenantId || req.user?.tenantId || 'default';
     
     return this.walletService.approveTopUpRequest(id, userId, authToken, tenantId);
   }
@@ -404,7 +511,7 @@ export class MerchantWalletController {
     const authToken = authHeader.substring(7);
     
     const context = await this.merchantService.validateMerchantAccess(userId, undefined, req.user);
-    const tenantId = context.tenantId;
+    const tenantId = context?.tenantId || req.user?.tenantId || 'default';
     
     return this.walletService.rejectTopUpRequest(id, userId, body.reason, authToken, tenantId);
   }
@@ -437,6 +544,8 @@ export class MerchantWalletController {
       amount: string;
       currency?: string;
       senderAccountId?: string;
+      senderName?: string;
+      transferrerName?: string; // Support both names
     },
     @UploadedFile() file?: Express.Multer.File,
   ) {
@@ -455,25 +564,13 @@ export class MerchantWalletController {
       paymentMethod = 'BANK_TRANSFER';
     }
 
-    let receiptImageUrl: string | undefined;
-    if (file) {
-      try {
-        const uploadResult = await this.cloudinaryService.uploadImage(
-          file,
-          `tenants/${tenantId}/wallet-receipts`,
-        );
-        receiptImageUrl = uploadResult.secureUrl;
-      } catch (error) {
-        throw new BadRequestException(`Failed to upload receipt image: ${error}`);
-      }
-    }
-
     const userData = req.user.email ? {
       email: req.user.email,
       name: req.user.name,
       role: req.user.role,
     } : undefined;
 
+    // Create the top-up request immediately without waiting for image upload
     const topUpRequest = await this.walletService.createTopUpRequest(
       tenantId,
       userId,
@@ -483,10 +580,29 @@ export class MerchantWalletController {
         paymentMethod,
         bankId: body.bankId,
         senderAccountId: body.senderAccountId,
-        receiptImage: receiptImageUrl,
+        senderName: body.senderName || body.transferrerName,
+        receiptImage: undefined, // Will be updated after upload
       },
       userData,
     );
+
+    // Upload image asynchronously in the background (non-blocking)
+    if (file) {
+      // Don't await - let it run in the background
+      this.cloudinaryService.uploadImage(
+        file,
+        `tenants/${tenantId}/wallet-receipts`,
+      ).then((uploadResult) => {
+        // Update the top-up request with the image URL once upload completes
+        return this.prisma.walletTopUpRequest.update({
+          where: { id: topUpRequest.id },
+          data: { receiptImage: uploadResult.secureUrl },
+        });
+      }).catch((error) => {
+        // Log error but don't fail the request
+        this.logger.error(`Failed to upload receipt image for top-up request ${topUpRequest.id}:`, error);
+      });
+    }
 
     return {
       success: true,

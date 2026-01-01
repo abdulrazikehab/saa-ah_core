@@ -7,9 +7,10 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { FraudModule } from '../fraud/fraud.module';
 import { AuthModule } from '../auth/auth.module';
 import { GuestCheckoutModule } from '../guest-checkout/guest-checkout.module';
+import { PurchaseLimitsModule } from '../purchase-limits/purchase-limits.module';
 
 @Module({
-  imports: [CartModule, OrderModule, PrismaModule, FraudModule, AuthModule, GuestCheckoutModule],
+  imports: [CartModule, OrderModule, PrismaModule, FraudModule, AuthModule, GuestCheckoutModule, PurchaseLimitsModule],
   controllers: [CheckoutController],
   providers: [CheckoutService],
   exports: [CheckoutService],

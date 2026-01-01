@@ -1,6 +1,7 @@
 // main.ts
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import helmet from 'helmet';
@@ -9,6 +10,7 @@ import { securityConfig } from './config/security.config';
 import { json, urlencoded, Request, Response, NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
+import * as express from 'express';
 
 // Load environment variables first
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -17,7 +19,7 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   
   try {
-    const app = await NestFactory.create(AppModule);
+    const app = await NestFactory.create<NestExpressApplication>(AppModule);
     
     // CRITICAL: Enable CORS FIRST before any other middleware to prevent duplicate headers
     // Enhanced CORS configuration for frontend and subdomains

@@ -37,9 +37,12 @@ export class EmployeeService {
 
     this.logger.log(`Created employee ${employee.id} for merchant ${merchantId}`);
 
-    // Return without password hash
+    // Return without password hash and normalize permissions
     const { passwordHash: _, ...result } = employee;
-    return result;
+    return {
+      ...result,
+      permissions: this.normalizePermissions(result.permissions as any),
+    };
   }
 
   // Get all employees for merchant
@@ -72,7 +75,11 @@ export class EmployeeService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return employees;
+    // Normalize permissions for each employee to include all fields
+    return employees.map(emp => ({
+      ...emp,
+      permissions: this.normalizePermissions(emp.permissions as any),
+    }));
   }
 
   // Get single employee
@@ -95,7 +102,11 @@ export class EmployeeService {
       throw new NotFoundException('Employee not found');
     }
 
-    return employee;
+    // Normalize permissions to include all fields
+    return {
+      ...employee,
+      permissions: this.normalizePermissions(employee.permissions as any),
+    };
   }
 
   // Update employee
@@ -137,7 +148,11 @@ export class EmployeeService {
 
     this.logger.log(`Updated employee ${employeeId}`);
 
-    return updated;
+    // Normalize permissions to include all fields
+    return {
+      ...updated,
+      permissions: this.normalizePermissions(updated.permissions as any),
+    };
   }
 
   // Delete (soft-disable) employee
@@ -192,6 +207,51 @@ export class EmployeeService {
         },
       },
     });
+  }
+
+  // Normalize permissions object to include all fields with defaults
+  private normalizePermissions(permissions: any): any {
+    if (!permissions || typeof permissions !== 'object') {
+      // Return all false if no permissions
+      return {
+        ordersCreate: false,
+        ordersRead: false,
+        ordersUpdate: false,
+        ordersDelete: false,
+        reportsRead: false,
+        walletRead: false,
+        walletRecharge: false,
+        playersWrite: false,
+        playersRead: false,
+        employeesManage: false,
+        employeesRead: false,
+        settingsWrite: false,
+        settingsRead: false,
+        invoicesRead: false,
+        productsRead: false,
+        productsWrite: false,
+      };
+    }
+
+    // Return normalized permissions with defaults
+    return {
+      ordersCreate: permissions.ordersCreate ?? false,
+      ordersRead: permissions.ordersRead ?? false,
+      ordersUpdate: permissions.ordersUpdate ?? false,
+      ordersDelete: permissions.ordersDelete ?? false,
+      reportsRead: permissions.reportsRead ?? false,
+      walletRead: permissions.walletRead ?? false,
+      walletRecharge: permissions.walletRecharge ?? false,
+      playersWrite: permissions.playersWrite ?? false,
+      playersRead: permissions.playersRead ?? false,
+      employeesManage: permissions.employeesManage ?? false,
+      employeesRead: permissions.employeesRead ?? false,
+      settingsWrite: permissions.settingsWrite ?? false,
+      settingsRead: permissions.settingsRead ?? false,
+      invoicesRead: permissions.invoicesRead ?? false,
+      productsRead: permissions.productsRead ?? false,
+      productsWrite: permissions.productsWrite ?? false,
+    };
   }
 }
 

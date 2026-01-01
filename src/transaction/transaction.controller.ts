@@ -65,4 +65,13 @@ export class TransactionController {
   ) {
     return this.transactionService.reprintTransaction(tenantId, id);
   }
+
+  // Refund a transaction
+  @Post(':id/refund')
+  async refundTransaction(
+    @Param('id') id: string,
+    @Query('tenantId') tenantId: string,
+  ) {
+    return this.transactionService.refundTransaction(tenantId, id);
+  }
 }

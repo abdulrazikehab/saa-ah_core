@@ -19,6 +19,7 @@ model Tenant {
   settings           Json?
   description        String?
   templateId         String?
+  storeType          StoreType            @default(GENERAL)
   activityLogs       ActivityLog[]        @relation("ActivityLogs")
   apiKeys            ApiKey[]
   banks              Bank[]
@@ -37,6 +38,7 @@ model Tenant {
   featureFlags       FeatureFlag[]
   integrations       Integration[]
   merchants          Merchant[]
+  notifications     Notification[]
   orders             Order[]
   pages              Page[]
   paymentMethods     PaymentMethod[]
@@ -61,6 +63,8 @@ model Tenant {
   wallets            Wallet[]
   webhookEndpoints   WebhookEndpoint[]
   tenantPaymentOptions TenantPaymentOption[]
+  purchaseLimits     PurchaseLimits?
+  customerProblemEmailTemplate CustomerProblemEmailTemplate?
 
   @@map("tenants")
 }
@@ -76,10 +80,12 @@ model Product {
   price             Decimal
   compareAtPrice    Decimal?
   costPerItem       Decimal?
+  stockCount        Int                     @default(0)
   isAvailable       Boolean                 @default(true)
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @updatedAt
   isPublished       Boolean                 @default(true)
+  isDigital         Boolean                 @default(false)
   seoDescription    String?
   seoTitle          String?
   nameAr            String?
@@ -138,6 +144,17 @@ model Product {
   tenant            Tenant                  @relation(fields: [tenantId], references: [id])
   unit              Unit?                   @relation(fields: [unitId], references: [id])
   supplierPurchases SupplierPurchase[]
+  merchantCartItems   MerchantCartItem[]
+  merchantFavoritesV2 MerchantFavoriteV2[]
+  merchantOrderItems  MerchantOrderItem[]
+  merchantOverrides   MerchantProductOverride[]
+  priceAlerts         PriceAlertSubscription[]
+  priceHistory        ProductPriceHistory[]
+  merchantFavorites   MerchantFavorite[]
+  cardInventory       CardInventory[]
+  cardOrderItems      CardOrderItem[]
+
+
 
   @@index([tenantId])
   @@unique([tenantId, sku])
@@ -195,7 +212,7 @@ model Category {
   tenant        Tenant            @relation(fields: [tenantId], references: [id])
   products      ProductCategory[]
 
-  @@unique([tenantId, slug])
+  @@unique([tenantId, slug, parentId])
   @@index([tenantId])
   @@index([isActive])
   @@index([parentId])
@@ -488,6 +505,39 @@ model TenantPaymentOption {
   @@map("tenant_payment_options")
 }
 
+model PurchaseLimits {
+  id       String  @id @default(cuid())
+  tenantId String  @unique
+  
+  // Default limits for guest/unverified customers
+  defaultLimitAmount        Decimal @default(1000)
+  
+  // Limits per customer layer (tier) - stored as JSON
+  // Format: { "tierId": { "baseLimit": 5000, "increasePerPurchase": 100 } }
+  tierLimits                Json    @default("{}")
+  
+  // Purchase count tracking for limit increases
+  // Format: { "customerId": { "purchaseCount": 5, "currentLimit": 5500 } }
+  customerLimitTracking     Json    @default("{}")
+  
+  // Credit card tracking - hash of last 4 digits + expiration for same card detection
+  // Format: { "cardHash": { "customerEmail": "email@example.com", "usageCount": 3, "totalAmount": 5000 } }
+  creditCardTracking        Json    @default("{}")
+  
+  // Enable credit card checking
+  enableCreditCardTracking  Boolean @default(true)
+  
+  // Enable purchase count increase
+  enablePurchaseCountIncrease Boolean @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("purchase_limits")
+}
+
 model Transaction {
   id                String            @id @default(cuid())
   tenantId          String
@@ -723,6 +773,7 @@ model User {
   supportTickets  SupportTicket[]      @relation("SupportTickets")
   ticketReplies   TicketReply[]        @relation("TicketReplies")
   gifts           UserGift[]
+  notifications   Notification[]
   tenant          Tenant?              @relation(fields: [tenantId], references: [id])
   processedTopUps WalletTopUpRequest[] @relation("ProcessedTopUps")
   topUpRequests   WalletTopUpRequest[] @relation("TopUpRequests")
@@ -937,6 +988,7 @@ model Supplier {
   apiConfig           Json?              // Supplier-specific configuration (credentials, settings, etc.)
   autoPurchaseEnabled Boolean            @default(false)
   priceCheckInterval  Int?
+  responseDays        Int                @default(3) // Days supplier takes to respond to problems
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
   products            ProductSupplier[]
@@ -1148,18 +1200,11 @@ model CardProduct {
   sortOrder           Int                       @default(0)
   createdAt           DateTime                  @default(now())
   updatedAt           DateTime                  @updatedAt
-  inventory           CardInventory[]
-  orderItems          CardOrderItem[]
+
   brand               Brand?                    @relation("CardProductBrand", fields: [brandId], references: [id])
   category            Category?                 @relation("CardProductCategory", fields: [categoryId], references: [id])
   tenant              Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  merchantCartItems   MerchantCartItem[]
-  favorites           MerchantFavorite[]
-  merchantFavoritesV2 MerchantFavoriteV2[]
-  merchantOrderItems  MerchantOrderItem[]
-  merchantOverrides   MerchantProductOverride[]
-  priceAlerts         PriceAlertSubscription[]
-  priceHistory        ProductPriceHistory[]
+
 
   @@unique([tenantId, productCode])
   @@index([tenantId])
@@ -1183,7 +1228,8 @@ model CardInventory {
   soldToUserId String?
   orderId      String?
   order        CardOrder?  @relation(fields: [orderId], references: [id])
-  product      CardProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product      Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+
   soldToUser   User?       @relation("CardsSold", fields: [soldToUserId], references: [id])
   tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1242,7 +1288,8 @@ model CardOrderItem {
   deliveredCount Int            @default(0)
   deliveries     CardDelivery[]
   order          CardOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product        CardProduct    @relation(fields: [productId], references: [id])
+  product        Product        @relation(fields: [productId], references: [id])
+
 
   @@index([orderId])
   @@index([productId])
@@ -1388,7 +1435,8 @@ model MerchantFavorite {
   userId    String
   productId String
   addedAt   DateTime    @default(now())
-  product   CardProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product   Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+
   user      User        @relation("Favorites", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId])
@@ -1579,7 +1627,8 @@ model MerchantCartItem {
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
   cart              MerchantCart @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  product           CardProduct  @relation(fields: [productId], references: [id])
+  product           Product      @relation(fields: [productId], references: [id])
+
 
   @@unique([cartId, productId])
   @@index([cartId])
@@ -1649,7 +1698,8 @@ model MerchantOrderItem {
   metadata              Json?
   deliveries            MerchantOrderDelivery[]
   order                 MerchantOrder           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product               CardProduct             @relation(fields: [productId], references: [id])
+  product               Product                 @relation(fields: [productId], references: [id])
+
 
   @@index([orderId])
   @@index([productId])
@@ -1783,7 +1833,8 @@ model PriceAlertSubscription {
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
   merchant          Merchant       @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  product           CardProduct    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product           Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+
 
   @@unique([merchantId, productId, alertType])
   @@index([productId, isActive])
@@ -1799,7 +1850,8 @@ model ProductPriceHistory {
   changedAt       DateTime    @default(now())
   changedByUserId String?
   reason          String?
-  product         CardProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product         Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+
 
   @@index([productId, changedAt])
   @@map("product_price_history")
@@ -1832,7 +1884,8 @@ model MerchantFavoriteV2 {
   createdAt  DateTime     @default(now())
   merchant   Merchant     @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   player     Player?      @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  product    CardProduct? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product    Product?     @relation(fields: [productId], references: [id], onDelete: Cascade)
+
 
   @@unique([merchantId, type, productId])
   @@unique([merchantId, type, playerId])
@@ -1893,7 +1946,8 @@ model MerchantProductOverride {
   customPrice Decimal?
   customCost  Decimal?
   updatedAt   DateTime    @updatedAt
-  product     CardProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+
 
   @@unique([merchantId, productId])
   @@index([merchantId])
@@ -2314,3 +2368,65 @@ enum FavoriteType {
   PRODUCT
   PLAYER
 }
+
+enum StoreType {
+  GENERAL
+  DIGITAL_CARDS
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String
+  type       String   @default("INFO")
+  titleEn    String
+  titleAr    String?
+  bodyEn     String
+  bodyAr     String?
+  data       Json?
+  readAt     DateTime?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, createdAt])
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+// Email templates for customer problem notifications
+model CustomerProblemEmailTemplate {
+  id          String   @id @default(cuid())
+  tenantId    String   @unique
+  subject     String
+  subjectAr   String?
+  body        String   // HTML email body
+  bodyAr      String?  // Arabic HTML email body
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("customer_problem_email_templates")
+}
+
+
+model Complaint {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  userId      String?
+  name        String
+  email       String
+  phone       String?
+  subject     String
+  message     String
+  status      TicketStatus @default(OPEN)
+  priority    TicketPriority @default(MEDIUM)
+  aiResponse  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("complaints")
+}
+

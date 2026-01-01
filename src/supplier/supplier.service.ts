@@ -22,6 +22,7 @@ export interface CreateSupplierDto {
   apiConfig?: any;
   autoPurchaseEnabled?: boolean;
   priceCheckInterval?: number;
+  responseDays?: number; // Days supplier takes to respond to problems
 }
 
 export interface UpdateSupplierDto {
@@ -42,6 +43,7 @@ export interface UpdateSupplierDto {
   apiConfig?: any;
   autoPurchaseEnabled?: boolean;
   priceCheckInterval?: number;
+  responseDays?: number; // Days supplier takes to respond to problems
 }
 
 @Injectable()
@@ -76,6 +78,7 @@ export class SupplierService {
         apiConfig: data.apiConfig,
         autoPurchaseEnabled: data.autoPurchaseEnabled || false,
         priceCheckInterval: data.priceCheckInterval,
+        responseDays: data.responseDays || 3,
       },
     });
 
@@ -145,6 +148,7 @@ export class SupplierService {
         apiConfig: data.apiConfig,
         autoPurchaseEnabled: data.autoPurchaseEnabled,
         priceCheckInterval: data.priceCheckInterval,
+        responseDays: data.responseDays,
       },
     });
 

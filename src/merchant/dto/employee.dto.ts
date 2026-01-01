@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 
 // Define EmployeePermissions first since it's used by other classes
 export class EmployeePermissions {
+  // Orders permissions
   @IsOptional()
   @IsBoolean()
   ordersCreate?: boolean;
@@ -13,27 +14,66 @@ export class EmployeePermissions {
 
   @IsOptional()
   @IsBoolean()
+  ordersUpdate?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  ordersDelete?: boolean;
+
+  // Reports permissions
+  @IsOptional()
+  @IsBoolean()
   reportsRead?: boolean;
 
+  // Wallet permissions
   @IsOptional()
   @IsBoolean()
   walletRead?: boolean;
 
   @IsOptional()
   @IsBoolean()
+  walletRecharge?: boolean;
+
+  // Players permissions
+  @IsOptional()
+  @IsBoolean()
   playersWrite?: boolean;
 
+  @IsOptional()
+  @IsBoolean()
+  playersRead?: boolean;
+
+  // Employees permissions
   @IsOptional()
   @IsBoolean()
   employeesManage?: boolean;
 
   @IsOptional()
   @IsBoolean()
+  employeesRead?: boolean;
+
+  // Settings permissions
+  @IsOptional()
+  @IsBoolean()
   settingsWrite?: boolean;
 
   @IsOptional()
   @IsBoolean()
+  settingsRead?: boolean;
+
+  // Invoices permissions
+  @IsOptional()
+  @IsBoolean()
   invoicesRead?: boolean;
+
+  // Products permissions
+  @IsOptional()
+  @IsBoolean()
+  productsRead?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  productsWrite?: boolean;
 }
 
 export class CreateEmployeeDto {

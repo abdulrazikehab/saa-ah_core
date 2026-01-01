@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Request, Query, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, UseGuards, Request, Query, Logger, BadRequestException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom, catchError } from 'rxjs';
 import { of } from 'rxjs';
@@ -103,10 +103,28 @@ export class DashboardController {
         authBaseUrl = `${authBaseUrl}/api`;
       }
       
-      const token = req.headers.authorization?.replace('Bearer ', '') || req.user?.accessToken || '';
+      // Get token from request - try multiple sources
+      const token = req.headers.authorization?.replace('Bearer ', '') || 
+                   req.user?.accessToken || 
+                   req.cookies?.accessToken || '';
       const customersUrl = `${authBaseUrl}/customers`;
       
-      this.logger.log(`🔍 Fetching customers from auth service - URL: ${customersUrl}, tenantId: ${tenantId}, hasToken: ${!!token}`);
+      this.logger.log(`🔍 Fetching customers from auth service - URL: ${customersUrl}, tenantId: ${tenantId}, hasToken: ${!!token}, userType: ${req.user?.type || req.user?.role}`);
+      
+      // For customers, they can only see their own data, not all customers
+      const isCustomer = req.user?.type === 'customer' || req.user?.role === 'CUSTOMER';
+      if (isCustomer) {
+        this.logger.log('Customer accessing dashboard/customers - returning empty list (customers cannot view other customers)');
+        return {
+          data: [],
+          meta: {
+            total: 0,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: 0,
+          },
+        };
+      }
       
       if (!token) {
         this.logger.warn('⚠️ No authentication token available for auth service call - customers may not be fetched');
@@ -491,6 +509,50 @@ export class DashboardController {
     } catch (error) {
       // Log error but don't throw - page creation is optional
       console.error('Failed to ensure support page:', error);
+    }
+  }
+
+
+  /**
+   * Get customer tiers for the tenant
+   * This endpoint returns customer tiers that can be used for purchase limits configuration
+   */
+  @Get('customer-tiers')
+  async getCustomerTiers(@Request() req: any) {
+    try {
+      const tenantId = req.tenantId || req.user?.tenantId || process.env.DEFAULT_TENANT_ID || 'default';
+      
+      // Try to get customer tiers from PlatformConfig
+      const config = await this.prisma.platformConfig.findUnique({
+        where: {
+          key: `customer-tiers-${tenantId}`,
+        },
+      });
+
+      if (config && config.value) {
+        const tiers = config.value as any;
+        if (Array.isArray(tiers)) {
+          return tiers;
+        }
+        if (tiers.tiers && Array.isArray(tiers.tiers)) {
+          return tiers.tiers;
+        }
+      }
+
+      // Return default tiers if none exist
+      return [
+        { id: '1', name: 'VIP Tier', description: 'VIP customers', color: '#FFD700', discountPercent: 15 },
+        { id: '2', name: 'Gold Tier', description: 'Gold customers', color: '#C0C0C0', discountPercent: 10 },
+        { id: '3', name: 'Regular Tier', description: 'Regular customers', color: '#CD7F32', discountPercent: 5 },
+      ];
+    } catch (error: any) {
+      this.logger.error('Error getting customer tiers:', error);
+      // Return default tiers on error instead of throwing
+      return [
+        { id: '1', name: 'VIP Tier', description: 'VIP customers', color: '#FFD700', discountPercent: 15 },
+        { id: '2', name: 'Gold Tier', description: 'Gold customers', color: '#C0C0C0', discountPercent: 10 },
+        { id: '3', name: 'Regular Tier', description: 'Regular customers', color: '#CD7F32', discountPercent: 5 },
+      ];
     }
   }
 }

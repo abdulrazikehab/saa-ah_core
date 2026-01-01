@@ -46,6 +46,27 @@ export class TenantService {
     });
   }
 
+  async searchTenants(query: string) {
+    if (!query) return [];
+    
+    return this.prisma.tenant.findMany({
+      where: {
+        OR: [
+          { name: { contains: query, mode: 'insensitive' } },
+          { subdomain: { contains: query, mode: 'insensitive' } },
+        ],
+        status: 'ACTIVE',
+      },
+      select: {
+        id: true,
+        name: true,
+        subdomain: true,
+        settings: true, // Include settings for store description/logo if needed
+      },
+      take: 20,
+    });
+  }
+
   async updateTenant(id: string, data: { name?: string; subdomain?: string; plan?: string; status?: string }) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id },

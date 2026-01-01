@@ -47,6 +47,7 @@ export class SiteConfigService {
         googlePlayUrl: '',
         appStoreUrl: '',
         blockVpnUsers: false,
+        storeType: 'GENERAL',
       };
       
       return {
@@ -76,7 +77,8 @@ export class SiteConfigService {
       select: { 
         settings: true,
         subdomain: true,
-        name: true
+        name: true,
+        storeType: true,
       }
     });
 
@@ -136,18 +138,19 @@ export class SiteConfigService {
       currency: baseCurrency,
       timezone: 'Asia/Riyadh',
       language: 'ar',
-      taxEnabled: true,
-      taxRate: 15,
-      shippingEnabled: true,
-      inventoryTracking: true,
-      lowStockThreshold: 10,
-      allowGuestCheckout: true,
-      requireEmailVerification: false,
-      maintenanceMode: false,
+      taxEnabled: tenantSettings.taxEnabled !== undefined ? tenantSettings.taxEnabled : true,
+      taxRate: tenantSettings.taxRate !== undefined ? tenantSettings.taxRate : 15,
+      shippingEnabled: tenantSettings.shippingEnabled !== undefined ? tenantSettings.shippingEnabled : true,
+      inventoryTracking: tenantSettings.inventoryTracking !== undefined ? tenantSettings.inventoryTracking : true,
+      lowStockThreshold: tenantSettings.lowStockThreshold !== undefined ? tenantSettings.lowStockThreshold : 10,
+      allowGuestCheckout: tenantSettings.allowGuestCheckout !== undefined ? tenantSettings.allowGuestCheckout : true,
+      requireEmailVerification: tenantSettings.requireEmailVerification !== undefined ? tenantSettings.requireEmailVerification : false,
+      maintenanceMode: tenantSettings.maintenanceMode !== undefined ? tenantSettings.maintenanceMode : false,
       storeLogoUrl: '',
       googlePlayUrl: '',
       appStoreUrl: '',
       blockVpnUsers: false,
+      storeType: tenant?.storeType || 'GENERAL',
     };
 
     if (!cfg) {
@@ -223,7 +226,7 @@ export class SiteConfigService {
       // Update Tenant settings if provided
       if (settings) {
         // Extract paymentMethods and hyperpayConfig from settings if present
-        const { paymentMethods: pm, hyperpayConfig: hp, subdomain, tenantName, ...restSettings } = settings;
+        const { paymentMethods: pm, hyperpayConfig: hp, subdomain, tenantName, storeType, ...restSettings } = settings;
         
         // Update PaymentSettingsService if payment info is present
         if (pm || hp) {
@@ -249,7 +252,10 @@ export class SiteConfigService {
         // Update Tenant settings (without payment config)
         await this.prisma.tenant.update({
           where: { id: tenantId },
-          data: { settings: restSettings },
+          data: { 
+            settings: restSettings,
+            storeType: storeType || undefined,
+          },
         });
 
         // Sync currency to CurrencySettings if currency was updated

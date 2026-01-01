@@ -2,10 +2,17 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, TransactionStatus } from '@prisma/client';
 import { getDefaultCurrency } from '../common/utils/currency.util';
+import { WalletService } from '../cards/wallet.service';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+
 
 @Injectable()
 export class TransactionService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private walletService: WalletService,
+  ) {}
+
 
   /**
    * Get tenant balance summary
@@ -383,4 +390,76 @@ export class TransactionService {
       };
     }
   }
+
+  /**
+   * Refund a transaction
+   */
+  async refundTransaction(tenantId: string, transactionId: string) {
+    const transaction = await this.prisma.transaction.findFirst({
+      where: {
+        id: transactionId,
+        tenantId,
+      },
+      include: {
+        order: true,
+      },
+    });
+
+    if (!transaction) {
+      throw new NotFoundException('Transaction not found');
+    }
+
+    if (transaction.status === 'REFUNDED') {
+      throw new BadRequestException('Transaction is already refunded');
+    }
+
+    if (transaction.status !== 'COMPLETED') {
+      throw new BadRequestException('Only completed transactions can be refunded');
+    }
+
+    // Start a transaction to ensure atomicity
+    return this.prisma.$transaction(async (prisma) => {
+      // 1. Update transaction status
+      const updatedTransaction = await prisma.transaction.update({
+        where: { id: transactionId },
+        data: {
+          status: 'REFUNDED',
+          metadata: {
+            ...(transaction.metadata as object || {}),
+            refundedAt: new Date().toISOString(),
+          },
+        },
+      });
+
+      // 2. If it was a wallet payment, refund the amount to the user's wallet
+      if (transaction.paymentMethodType === 'WALLET' && transaction.userId) {
+        await this.walletService.credit(
+          transaction.userId,
+          Number(transaction.amount),
+          `Refund for transaction ${transaction.id}`,
+          `استرجاع للمعاملة ${transaction.id}`,
+          transaction.id,
+          'REFUND'
+        );
+      }
+
+      // 3. Update associated order status if it exists
+      if (transaction.orderId) {
+        await prisma.order.update({
+          where: { id: transaction.orderId },
+          data: {
+            status: 'CANCELLED', // Or a specific REFUNDED status if available
+            paymentStatus: 'REFUNDED',
+          },
+        });
+      }
+
+      return {
+        success: true,
+        message: 'Transaction refunded successfully',
+        transaction: updatedTransaction,
+      };
+    });
+  }
 }
+

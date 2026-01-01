@@ -1,14 +1,25 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { PlanType, Status, UserRole } from '@prisma/client';
+import { PlanType, Status, UserRole, TicketStatus, TicketPriority, TransactionStatus } from '@prisma/client';
+import { CreateComplaintDto, UpdateComplaintDto } from './dto/complaint.dto';
+import { TransactionService } from '../transaction/transaction.service';
+
+
 import * as os from 'os';
 import * as bcrypt from 'bcryptjs';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class MasterAdminService {
   private readonly logger = new Logger(MasterAdminService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private httpService: HttpService,
+    private transactionService: TransactionService,
+  ) {}
+
 
   // ==================== SYSTEM HEALTH ====================
 
@@ -1422,4 +1433,352 @@ export class MasterAdminService {
       });
     }
   }
+
+  // ==================== PLATFORM CONFIGURATION ====================
+
+  async getPlatformConfig() {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { key: 'platform_details' },
+    });
+
+    if (config) {
+      return config.value as any;
+    }
+
+    // Return defaults if no config exists
+    return {
+      name: 'SAEA',
+      nameAr: 'ساعي',
+      email: '',
+      phone: '',
+      whatsapp: '',
+      address: '',
+      addressAr: '',
+      socialLinks: {},
+      settings: {},
+    };
+  }
+
+  async updatePlatformConfig(data: any) {
+    const existingConfig = await this.prisma.platformConfig.findUnique({
+      where: { key: 'platform_details' },
+    });
+
+    if (existingConfig) {
+      return this.prisma.platformConfig.update({
+        where: { key: 'platform_details' },
+        data: {
+          value: data,
+          updatedAt: new Date(),
+          updatedBy: 'admin',
+        },
+      });
+    } else {
+      return this.prisma.platformConfig.create({
+        data: {
+          key: 'platform_details',
+          value: data,
+          category: 'platform',
+          updatedBy: 'admin',
+        },
+      });
+    }
+  }
+
+
+  // ==================== LIMITS CONFIGURATION ====================
+
+  async getLimitsConfig() {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { key: 'limits_config' },
+    });
+
+    if (config) {
+      return config.value as any;
+    }
+
+    // Return defaults if no config exists
+    return {
+      signupEnabled: true,
+      signinEnabled: true,
+      signupMaxAttempts: 3,
+      signupWindowMs: 60 * 60 * 1000, // 1 hour
+      signinMaxAttempts: 5,
+      signinWindowMs: 15 * 60 * 1000, // 15 minutes
+      maxStoresPerUser: 2,
+    };
+  }
+
+  async updateLimitsConfig(data: {
+    signupEnabled?: boolean;
+    signinEnabled?: boolean;
+    signupMaxAttempts?: number;
+    signupWindowMs?: number;
+    signinMaxAttempts?: number;
+    signinWindowMs?: number;
+    maxStoresPerUser?: number;
+  }) {
+    const existingConfig = await this.prisma.platformConfig.findUnique({
+      where: { key: 'limits_config' },
+    });
+
+    const currentConfig = existingConfig 
+      ? (existingConfig.value as any)
+      : {
+          signupEnabled: true,
+          signinEnabled: true,
+          signupMaxAttempts: 3,
+          signupWindowMs: 60 * 60 * 1000,
+          signinMaxAttempts: 5,
+          signinWindowMs: 15 * 60 * 1000,
+          maxStoresPerUser: 2,
+        };
+
+    const updatedConfig = {
+      ...currentConfig,
+      ...data,
+    };
+
+    if (existingConfig) {
+      await this.prisma.platformConfig.update({
+        where: { key: 'limits_config' },
+        data: { 
+          value: updatedConfig,
+          updatedAt: new Date(),
+          updatedBy: 'admin',
+        },
+      });
+    } else {
+      await this.prisma.platformConfig.create({
+        data: {
+          key: 'limits_config',
+          value: updatedConfig,
+          category: 'system',
+          updatedBy: 'admin',
+        },
+      });
+    }
+
+    this.logger.log('Limits configuration updated:', updatedConfig);
+    return updatedConfig;
+  }
+
+  // ==================== CLOUDINARY ACCESS MANAGEMENT ====================
+
+  async getCloudinaryAccessUsers() {
+    try {
+      // Call auth service to get users with Cloudinary access
+      const authServiceUrl = (process.env.AUTH_API_URL || process.env.AUTH_SERVICE_URL || 'http://localhost:3001').replace(/\/+$/, '');
+      const url = `${authServiceUrl}/admin/cloudinary-access`;
+      
+      const adminApiKey = process.env.ADMIN_API_KEY || 'Saeaa2025Admin!';
+      this.logger.log(`Calling auth service: ${url} with admin API key`);
+      
+      const response = await firstValueFrom(
+        this.httpService.get(url, {
+          headers: {
+            'x-admin-api-key': adminApiKey,
+            'X-Admin-API-Key': adminApiKey, // Also send with capital letters for compatibility
+          },
+        })
+      );
+
+      return response.data;
+    } catch (error: any) {
+      this.logger.error('Failed to get Cloudinary access users:', {
+        error: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url,
+      });
+      throw new BadRequestException(
+        error.response?.data?.message || error.message || 'Failed to get Cloudinary access users'
+      );
+    }
+  }
+
+  async updateCloudinaryAccess(userIds: string[], hasAccess: boolean, grantedBy: string) {
+    try {
+      const authServiceUrl = (process.env.AUTH_API_URL || process.env.AUTH_SERVICE_URL || 'http://localhost:3001').replace(/\/+$/, '');
+      const url = `${authServiceUrl}/admin/cloudinary-access`;
+      
+      const adminApiKey = process.env.ADMIN_API_KEY || 'Saeaa2025Admin!';
+      
+      const response = await firstValueFrom(
+        this.httpService.post(url, {
+          userIds,
+          hasAccess,
+          grantedBy,
+        }, {
+          headers: {
+            'x-admin-api-key': adminApiKey,
+            'X-Admin-API-Key': adminApiKey, // Also send with capital letters for compatibility
+          },
+        })
+      );
+
+      return response.data;
+    } catch (error: any) {
+      this.logger.error('Failed to update Cloudinary access:', {
+        error: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url,
+        userIds,
+        hasAccess,
+        grantedBy,
+      });
+      throw new BadRequestException(
+        error.response?.data?.message || error.message || 'Failed to update Cloudinary access'
+      );
+    }
+  }
+
+  async getUserCloudinaryAccess(userId: string) {
+    try {
+      const authServiceUrl = (process.env.AUTH_API_URL || process.env.AUTH_SERVICE_URL || 'http://localhost:3001').replace(/\/+$/, '');
+      const url = `${authServiceUrl}/admin/cloudinary-access/${userId}`;
+      
+      const adminApiKey = process.env.ADMIN_API_KEY || 'Saeaa2025Admin!';
+      
+      const response = await firstValueFrom(
+        this.httpService.get(url, {
+          headers: {
+            'x-admin-api-key': adminApiKey,
+            'X-Admin-API-Key': adminApiKey, // Also send with capital letters for compatibility
+          },
+        })
+      );
+
+      return response.data;
+    } catch (error: any) {
+      this.logger.error('Failed to get user Cloudinary access:', {
+        error: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url,
+      });
+      throw new BadRequestException(
+        error.response?.data?.message || error.message || 'Failed to get user Cloudinary access'
+      );
+    }
+  }
+
+  // ==================== COMPLAINTS MANAGEMENT ====================
+
+  async getAllComplaints(options: {
+    status?: TicketStatus;
+    priority?: TicketPriority;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const { status, priority, search, page = 1, limit = 10 } = options;
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+    if (status) where.status = status;
+    if (priority) where.priority = priority;
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { subject: { contains: search, mode: 'insensitive' } },
+        { message: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.complaint.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.complaint.count({ where }),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async getComplaintById(id: string) {
+    const complaint = await this.prisma.complaint.findUnique({
+      where: { id },
+    });
+
+    if (!complaint) {
+      throw new NotFoundException(`Complaint with ID ${id} not found`);
+    }
+
+    return complaint;
+  }
+
+  async createComplaint(data: CreateComplaintDto) {
+    return this.prisma.complaint.create({
+      data,
+    });
+  }
+
+  async updateComplaint(id: string, data: UpdateComplaintDto) {
+    await this.getComplaintById(id);
+
+    return this.prisma.complaint.update({
+      where: { id },
+      data,
+    });
+  }
+
+  async deleteComplaint(id: string) {
+    await this.getComplaintById(id);
+
+    return this.prisma.complaint.delete({
+      where: { id },
+    });
+  }
+
+  // ==================== TRANSACTION MANAGEMENT ====================
+
+  async getAllTransactions(filters: {
+    status?: TransactionStatus;
+    limit?: number;
+    offset?: number;
+  }) {
+    const where: any = {};
+    if (filters.status) where.status = filters.status;
+
+    const [transactions, total] = await Promise.all([
+      this.prisma.transaction.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: filters.limit || 50,
+        skip: filters.offset || 0,
+      }),
+      this.prisma.transaction.count({ where }),
+    ]);
+
+    return {
+      transactions,
+      total,
+    };
+  }
+
+  async refundTransaction(transactionId: string) {
+    // Find the transaction first to get the tenantId
+    const transaction = await this.prisma.transaction.findUnique({
+      where: { id: transactionId },
+    });
+
+    if (!transaction) {
+      throw new NotFoundException('Transaction not found');
+    }
+
+    return this.transactionService.refundTransaction(transaction.tenantId, transactionId);
+  }
 }
+

@@ -34,7 +34,8 @@ export class CartService {
                 include: {
                   product: {
                     include: {
-                      images: { orderBy: { sortOrder: 'asc' }, take: 10 }
+                      images: { orderBy: { sortOrder: 'asc' }, take: 10 },
+                      categories: { select: { id: true } }
                     }
                   },
                   productVariant: true
@@ -72,7 +73,8 @@ export class CartService {
             include: { 
               product: {
                 include: {
-                  images: { orderBy: { sortOrder: 'asc' }, take: 10 }
+                  images: { orderBy: { sortOrder: 'asc' }, take: 10 },
+                  categories: { select: { id: true } }
                 }
               }, 
               productVariant: true 
@@ -92,7 +94,8 @@ export class CartService {
             include: { 
               product: {
                 include: {
-                  images: { orderBy: { sortOrder: 'asc' }, take: 10 }
+                  images: { orderBy: { sortOrder: 'asc' }, take: 10 },
+                  categories: { select: { id: true } }
                 }
               }, 
               productVariant: true 
@@ -113,7 +116,8 @@ export class CartService {
               include: { 
                 product: {
                   include: {
-                    images: { orderBy: { sortOrder: 'asc' }, take: 1 }
+                    images: { orderBy: { sortOrder: 'asc' }, take: 1 },
+                    categories: { select: { id: true } }
                   }
                 }, 
                 productVariant: true 
@@ -133,7 +137,8 @@ export class CartService {
             include: { 
               product: {
                 include: {
-                  images: { orderBy: { sortOrder: 'asc' }, take: 10 }
+                  images: { orderBy: { sortOrder: 'asc' }, take: 10 },
+                  categories: { select: { id: true } }
                 }
               }, 
               productVariant: true 
@@ -154,7 +159,8 @@ export class CartService {
               include: { 
                 product: {
                   include: {
-                    images: { orderBy: { sortOrder: 'asc' }, take: 1 }
+                    images: { orderBy: { sortOrder: 'asc' }, take: 1 },
+                    categories: { select: { id: true } }
                   }
                 }, 
                 productVariant: true 
@@ -186,7 +192,8 @@ export class CartService {
             include: { 
               product: {
                 include: {
-                  images: { orderBy: { sortOrder: 'asc' }, take: 10 }
+                  images: { orderBy: { sortOrder: 'asc' }, take: 10 },
+                  categories: { select: { id: true } }
                 }
               }, 
               productVariant: true 
@@ -210,7 +217,8 @@ export class CartService {
             const product = await this.prisma.product.findFirst({
               where: { id: item.productId, tenantId },
               include: {
-                images: { orderBy: { sortOrder: 'asc' }, take: 10 }
+                images: { orderBy: { sortOrder: 'asc' }, take: 10 },
+                categories: { select: { id: true } }
               }
             });
             if (product) {
@@ -245,11 +253,11 @@ export class CartService {
     // Verify product exists and belongs to tenant
     const product = await this.prisma.product.findFirst({
       where: { id: productId, tenantId },
-      include: { variants: true, images: { orderBy: { sortOrder: 'asc' }, take: 1 } },
+      include: { variants: true, images: { orderBy: { sortOrder: 'asc' }, take: 1 }, categories: { select: { id: true } } },
     });
 
     if (!product) {
-      throw new NotFoundException('Product not found');
+      throw new NotFoundException('المنتج غير موجود');
     }
 
     // Verify variant exists if provided, or auto-select first variant if product has variants
@@ -265,7 +273,7 @@ export class CartService {
     if (finalVariantId) {
       selectedVariant = product.variants.find((v: any) => v.id === finalVariantId) as { id: string; inventoryQuantity: number; trackInventory: boolean } | undefined || null;
       if (!selectedVariant) {
-        throw new NotFoundException('Product variant not found');
+        throw new NotFoundException('نوع المنتج غير موجود');
       }
       
       // Log variant details for debugging
@@ -283,7 +291,7 @@ export class CartService {
         if (product.isAvailable) {
           this.logger.warn(`Low inventory for variant ${finalVariantId}: ${selectedVariant.inventoryQuantity} available, requested ${quantity}. Allowing add to cart (will check at checkout).`);
         } else {
-          throw new BadRequestException(`Product is not available. Only ${selectedVariant.inventoryQuantity} in stock.`);
+          throw new BadRequestException(`المنتج غير متوفر حالياً. المتوفر فقط ${selectedVariant.inventoryQuantity} قطعة.`);
         }
       }
       
@@ -316,7 +324,7 @@ export class CartService {
         if (product.isAvailable) {
           this.logger.warn(`Low inventory for variant ${selectedVariant.id}: ${selectedVariant.inventoryQuantity} available, requested ${newQuantity}. Allowing update (will check at checkout).`);
         } else {
-          throw new BadRequestException(`Product is not available. Cannot add ${quantity} more. Only ${selectedVariant.inventoryQuantity - existingItem.quantity} available`);
+          throw new BadRequestException(`المنتج غير متوفر حالياً. لا يمكن إضافة ${quantity} قطعة إضافية. المتوفر فقط ${selectedVariant.inventoryQuantity - existingItem.quantity} قطعة.`);
         }
       }
 
@@ -327,7 +335,8 @@ export class CartService {
         include: { 
           product: {
             include: {
-              images: { orderBy: { sortOrder: 'asc' }, take: 10 }
+              images: { orderBy: { sortOrder: 'asc' }, take: 10 },
+              categories: { select: { id: true } }
             }
           }, 
           productVariant: true 
@@ -347,7 +356,8 @@ export class CartService {
         include: { 
           product: {
             include: {
-              images: { orderBy: { sortOrder: 'asc' }, take: 10 }
+              images: { orderBy: { sortOrder: 'asc' }, take: 10 },
+              categories: { select: { id: true } }
             }
           }, 
           productVariant: true 
@@ -359,12 +369,12 @@ export class CartService {
     // CRITICAL: Verify the cart item has the correct product
     if (!cartItem.product) {
       this.logger.error(`❌ CRITICAL: Cart item ${cartItem.id} created but product is null! productId: ${productId}`);
-      throw new BadRequestException('Failed to link product to cart item. Product data is missing.');
+      throw new BadRequestException('فشل ربط المنتج بالسلة. بيانات المنتج مفقودة.');
     }
     
     if (cartItem.product.id !== productId) {
       this.logger.error(`❌ CRITICAL: Product ID mismatch! Expected ${productId}, got ${cartItem.product.id}`);
-      throw new BadRequestException('Product ID mismatch. Please try again.');
+      throw new BadRequestException('خطأ في تحديد المنتج. يرجى المحاولة مرة أخرى.');
     }
     
     this.logger.log(`✅ Added product ${productId} (${cartItem.product.name || cartItem.product.nameAr || 'Unknown'}) to cart ${cartId}, cartItem: ${cartItem.id}, quantity: ${quantity}`);
@@ -387,7 +397,8 @@ export class CartService {
             include: {
               product: {
                 include: {
-                  images: { orderBy: { sortOrder: 'asc' }, take: 10 }
+                  images: { orderBy: { sortOrder: 'asc' }, take: 10 },
+                  categories: { select: { id: true } }
                 }
               },
               productVariant: true
@@ -455,7 +466,7 @@ export class CartService {
 
     // Check inventory if variant exists
     if (cartItem.productVariant && cartItem.productVariant.inventoryQuantity < quantity) {
-      throw new BadRequestException(`Insufficient inventory. Only ${cartItem.productVariant.inventoryQuantity} available`);
+      throw new BadRequestException(`المخزون غير كافٍ. المتوفر فقط ${cartItem.productVariant.inventoryQuantity} قطعة.`);
     }
 
     const updatedItem = await this.prisma.cartItem.update({
@@ -464,7 +475,8 @@ export class CartService {
       include: { 
         product: {
           include: {
-            images: { orderBy: { sortOrder: 'asc' }, take: 1 }
+            images: { orderBy: { sortOrder: 'asc' }, take: 1 },
+            categories: { select: { id: true } }
           }
         }, 
         productVariant: true 
@@ -642,7 +654,8 @@ export class CartService {
                 images: { 
                   orderBy: { sortOrder: 'asc' },
                   take: 10 // Get more images for better product display
-                }
+                },
+                categories: { select: { id: true } }
               }
             },
             productVariant: {
@@ -652,7 +665,8 @@ export class CartService {
                     images: { 
                       orderBy: { sortOrder: 'asc' },
                       take: 10
-                    }
+                    },
+                    categories: { select: { id: true } }
                   }
                 }
               }
@@ -688,7 +702,8 @@ export class CartService {
               images: { 
                 orderBy: { sortOrder: 'asc' },
                 take: 10
-              }
+              },
+              categories: { select: { id: true } }
             }
           });
           if (product) {
@@ -820,7 +835,71 @@ export class CartService {
     const taxableAmount = subtotal - discountAmount;
     let taxAmount = 0;
     
-    if (this.taxService && shippingAddress?.country) {
+    // Check if tax is enabled in tenant settings
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: cart.tenantId },
+      select: { settings: true }
+    });
+    const tenantSettings = (tenant?.settings || {}) as any;
+    const taxes = tenantSettings.taxes || [];
+    const legacyTaxEnabled = tenantSettings.taxEnabled !== false;
+    
+    // If no taxes array but legacy settings exist, create a temporary tax object
+    if (taxes.length === 0 && legacyTaxEnabled) {
+      taxes.push({
+        id: 'legacy',
+        name: 'Default Tax',
+        rate: tenantSettings.taxRate !== undefined ? Number(tenantSettings.taxRate) : 15,
+        enabled: true,
+        mode: tenantSettings.taxMode || 'ALL',
+        categories: tenantSettings.taxableCategories || [],
+        products: tenantSettings.taxableProducts || [],
+      });
+    }
+
+    if (taxes.length > 0) {
+      // Calculate tax for each defined tax rule
+      for (const tax of taxes) {
+        if (!tax.enabled) continue;
+
+        let taxableSubtotal = 0;
+
+        for (const item of cart.cartItems) {
+          const price = item.productVariant?.price || item.product.price;
+          const itemTotal = Number(price) * item.quantity;
+          
+          let isTaxable = false;
+          
+          if (tax.mode === 'ALL') {
+            isTaxable = true;
+          } else if (tax.mode === 'CATEGORY') {
+            const productCategoryIds = item.product.categories?.map((c: any) => c.id) || [];
+            if (productCategoryIds.some((id: string) => (tax.categories || []).includes(id))) {
+              isTaxable = true;
+            }
+          } else if (tax.mode === 'PRODUCT') {
+            if ((tax.products || []).includes(item.productId)) {
+              isTaxable = true;
+            }
+          }
+
+          if (isTaxable) {
+            taxableSubtotal += itemTotal;
+          }
+        }
+
+        // Apply discount proportionally to taxable amount
+        let adjustedTaxableAmount = taxableSubtotal;
+        if (subtotal > 0 && discountAmount > 0) {
+          const discountRatio = discountAmount / subtotal;
+          adjustedTaxableAmount = taxableSubtotal * (1 - discountRatio);
+        }
+
+        // Add this tax's amount to total tax
+        taxAmount += roundCurrency(adjustedTaxableAmount * (Number(tax.rate) / 100));
+      }
+    } else if (this.taxService && shippingAddress?.country) {
+      // Fallback to location-based tax service if no custom taxes defined
       try {
         const taxResult = await this.taxService.calculateTax(
           cart.tenantId,
@@ -830,14 +909,10 @@ export class CartService {
         );
         taxAmount = roundCurrency(taxResult.taxAmount);
       } catch (error: any) {
-        this.logger.warn(`Error calculating tax: ${error.message}, using default 15%`);
-        // Fallback to default 15% tax
-        taxAmount = roundCurrency(taxableAmount * 0.15);
+        this.logger.warn(`Error calculating tax: ${error.message}`);
       }
-    } else {
-      // Default 15% tax when service not available or no address
-      taxAmount = roundCurrency(taxableAmount * 0.15);
     }
+    // If tax is disabled, taxAmount remains 0
 
     // Calculate final total
     const total = roundCurrency(subtotal - discountAmount + taxAmount + shippingAmount);

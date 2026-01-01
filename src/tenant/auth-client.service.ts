@@ -90,7 +90,7 @@ export class AuthClientService {
         throw new Error(`Auth service returned ${response.status}`);
       }
 
-      return await response.json();
+      return await response.json() as any;
     } catch (error) {
       this.logger.error(`Failed to get markets for user ${userId}:`, error);
       throw error;
@@ -110,7 +110,7 @@ export class AuthClientService {
       if (!response.ok) {
         let errorMessage = `Auth service returned ${response.status}`;
         try {
-          const errorData = await response.json();
+          const errorData = await response.json() as any;
           errorMessage = errorData.message || errorData.error || errorMessage;
         } catch {
           // If JSON parsing fails, try text

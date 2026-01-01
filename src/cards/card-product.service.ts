@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 
 export interface CreateCardProductDto {
   brandId?: string;
@@ -42,17 +43,19 @@ export interface CardProductFilter {
 export class CardProductService {
   private readonly logger = new Logger(CardProductService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationsService: NotificationsService,
+  ) {}
+
 
   async create(tenantId: string, data: CreateCardProductDto) {
     // Check for duplicate product code
     if (data.productCode) {
-      const existing = await this.prisma.cardProduct.findUnique({
+      const existing = await this.prisma.product.findFirst({
         where: {
-          tenantId_productCode: {
-            tenantId,
-            productCode: data.productCode,
-          },
+          tenantId,
+          productCode: data.productCode,
         },
       });
       if (existing) {
@@ -60,33 +63,27 @@ export class CardProductService {
       }
     }
 
-    const product = await this.prisma.cardProduct.create({
+
+    const product = await this.prisma.product.create({
       data: {
         tenantId,
         brandId: data.brandId,
-        categoryId: data.categoryId,
         name: data.name,
         nameAr: data.nameAr,
         description: data.description,
         descriptionAr: data.descriptionAr,
-        image: data.image,
         productCode: data.productCode,
-        denomination: data.denomination,
-        currency: data.currency || 'SAR',
-        wholesalePrice: data.wholesalePrice,
-        retailPrice: data.retailPrice,
-        profitMargin: data.profitMargin || 0,
-        taxRate: data.taxRate || 0.15,
-        isActive: data.isActive ?? true,
-        minQuantity: data.minQuantity || 1,
-        maxQuantity: data.maxQuantity || 100,
-        sortOrder: data.sortOrder || 0,
+        price: data.retailPrice,
+        costPerItem: data.wholesalePrice,
+        isAvailable: data.isActive ?? true,
+        min: data.minQuantity || 1,
+        max: data.maxQuantity || 100,
       },
       include: {
         brand: true,
-        category: true,
       },
     });
+
 
     this.logger.log(`Created card product ${product.id}: ${product.name}`);
     return product;
@@ -98,57 +95,29 @@ export class CardProductService {
     page: number = 1,
     limit: number = 20,
   ) {
-    const where: Prisma.CardProductWhereInput = {
-      tenantId,
-    };
-
-    if (filter.brandId) {
-      where.brandId = filter.brandId;
-    }
-    if (filter.categoryId) {
-      where.categoryId = filter.categoryId;
-    }
-    if (filter.isActive !== undefined) {
-      where.isActive = filter.isActive;
-    }
-    if (filter.isAvailable !== undefined) {
-      where.isAvailable = filter.isAvailable;
-    }
-    if (filter.search) {
-      where.OR = [
-        { name: { contains: filter.search, mode: 'insensitive' } },
-        { nameAr: { contains: filter.search, mode: 'insensitive' } },
-        { productCode: { contains: filter.search, mode: 'insensitive' } },
-      ];
-    }
-    if (filter.minPrice || filter.maxPrice) {
-      where.wholesalePrice = {};
-      if (filter.minPrice) {
-        where.wholesalePrice.gte = filter.minPrice;
-      }
-      if (filter.maxPrice) {
-        where.wholesalePrice.lte = filter.maxPrice;
-      }
-    }
-
     const [products, total] = await Promise.all([
-      this.prisma.cardProduct.findMany({
-        where,
+      this.prisma.product.findMany({
+        where: {
+          tenantId,
+          brandId: filter.brandId,
+          isAvailable: filter.isActive,
+          OR: filter.search ? [
+            { name: { contains: filter.search, mode: 'insensitive' } },
+            { nameAr: { contains: filter.search, mode: 'insensitive' } },
+            { productCode: { contains: filter.search, mode: 'insensitive' } },
+          ] : undefined,
+        },
         include: {
           brand: true,
-          category: true,
-          _count: {
-            select: {
-              inventory: { where: { status: 'AVAILABLE' } },
-            },
-          },
+          images: { take: 1 },
         },
-        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        orderBy: [{ createdAt: 'desc' }],
         skip: (page - 1) * limit,
         take: limit,
       }),
-      this.prisma.cardProduct.count({ where }),
+      this.prisma.product.count({ where: { tenantId } }),
     ]);
+
 
     // Add available stock count to each product
     const productsWithStock = products.map((product) => ({
@@ -166,18 +135,14 @@ export class CardProductService {
   }
 
   async findOne(tenantId: string, id: string) {
-    const product = await this.prisma.cardProduct.findFirst({
+    const product = await this.prisma.product.findFirst({
       where: { id, tenantId },
       include: {
         brand: true,
-        category: true,
-        _count: {
-          select: {
-            inventory: { where: { status: 'AVAILABLE' } },
-          },
-        },
+        images: { take: 1 },
       },
     });
+
 
     if (!product) {
       throw new NotFoundException(`Product ${id} not found`);
@@ -185,8 +150,15 @@ export class CardProductService {
 
     return {
       ...product,
-      availableStock: product._count.inventory,
+      wholesalePrice: Number(product.costPerItem || product.price),
+      retailPrice: Number(product.price),
+      image: product.images?.[0]?.url || null,
+      availableStock: product.isAvailable ? 999 : 0,
+      minQuantity: product.min || 1,
+      maxQuantity: product.max || 1000,
+      taxRate: 0.15,
     };
+
   }
 
   async update(tenantId: string, id: string, data: UpdateCardProductDto) {
@@ -222,7 +194,7 @@ export class CardProductService {
       where: { productId, status: 'AVAILABLE' },
     });
 
-    await this.prisma.cardProduct.update({
+    await this.prisma.product.update({
       where: { id: productId },
       data: {
         stockCount: count,
@@ -230,51 +202,88 @@ export class CardProductService {
       },
     });
 
+
+    // Send low stock notification
+    if (count < 5) {
+      const product = await this.prisma.product.findUnique({
+        where: { id: productId },
+        select: { name: true, nameAr: true, tenantId: true }
+      });
+
+      
+      if (product) {
+        try {
+          await this.notificationsService.sendNotification({
+            tenantId: product.tenantId,
+            type: 'INVENTORY',
+            titleEn: 'Low Stock Alert',
+            titleAr: 'تنبيه انخفاض المخزون',
+            bodyEn: `Product "${product.name}" is low on stock (${count} remaining).`,
+            bodyAr: `المنتج "${product.nameAr || product.name}" مخزونه منخفض (بقي ${count}).`,
+            data: { productId, stockCount: count }
+          });
+        } catch (error) {
+          this.logger.error(`Failed to send low stock notification: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+
     return count;
   }
 
   // Get products by brand
   async findByBrand(tenantId: string, brandId: string) {
-    return this.prisma.cardProduct.findMany({
+    const products = await this.prisma.product.findMany({
       where: {
         tenantId,
         brandId,
-        isActive: true,
         isAvailable: true,
       },
       include: {
         brand: true,
-        _count: {
-          select: {
-            inventory: { where: { status: 'AVAILABLE' } },
-          },
-        },
+        images: { take: 1 },
       },
-      orderBy: [{ sortOrder: 'asc' }, { denomination: 'asc' }],
+      orderBy: [{ createdAt: 'desc' }],
     });
+
+    return products.map(p => ({
+      ...p,
+      wholesalePrice: Number(p.costPerItem || p.price),
+      retailPrice: Number(p.price),
+      image: p.images?.[0]?.url || null,
+      availableStock: p.stockCount,
+      minQuantity: p.min || 1,
+      maxQuantity: p.max || 1000,
+    }));
   }
+
 
   // Get products by category
   async findByCategory(tenantId: string, categoryId: string) {
-    return this.prisma.cardProduct.findMany({
+    const products = await this.prisma.product.findMany({
       where: {
         tenantId,
-        categoryId,
-        isActive: true,
+        categories: { some: { categoryId } },
         isAvailable: true,
       },
       include: {
         brand: true,
-        category: true,
-        _count: {
-          select: {
-            inventory: { where: { status: 'AVAILABLE' } },
-          },
-        },
+        images: { take: 1 },
       },
-      orderBy: [{ sortOrder: 'asc' }, { denomination: 'asc' }],
+      orderBy: [{ createdAt: 'desc' }],
     });
+
+    return products.map(p => ({
+      ...p,
+      wholesalePrice: Number(p.costPerItem || p.price),
+      retailPrice: Number(p.price),
+      image: p.images?.[0]?.url || null,
+      availableStock: p.stockCount,
+      minQuantity: p.min || 1,
+      maxQuantity: p.max || 1000,
+    }));
   }
+
 
   // Get all brands with product counts
   async getBrandsWithProducts(tenantId: string) {
@@ -286,8 +295,8 @@ export class CardProductService {
       include: {
         _count: {
           select: {
-            cardProducts: {
-              where: { isActive: true, isAvailable: true },
+            products: {
+              where: { isAvailable: true },
             },
           },
         },
@@ -297,8 +306,9 @@ export class CardProductService {
 
     return brands.map((brand) => ({
       ...brand,
-      productCount: brand._count.cardProducts,
+      productCount: brand._count.products,
     }));
+
   }
 
   // Get all categories with product counts
@@ -311,8 +321,10 @@ export class CardProductService {
       include: {
         _count: {
           select: {
-            cardProducts: {
-              where: { isActive: true, isAvailable: true },
+            products: {
+              where: {
+                product: { isAvailable: true }
+              },
             },
           },
         },
@@ -322,8 +334,9 @@ export class CardProductService {
 
     return categories.map((category) => ({
       ...category,
-      productCount: category._count.cardProducts,
+      productCount: category._count.products,
     }));
+
   }
 }
 

@@ -40,24 +40,60 @@ export class CategoryController {
     @Headers('x-tenant-id') tenantIdHeader: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 20,
+    @Query('allFields') allFields: string = 'false',
   ) {
     try {
       const tenantId = req.tenantId || tenantIdHeader || process.env.DEFAULT_TENANT_ID || 'default';
       const pageNum = Number(page) || 1;
       const limitNum = Number(limit) || 20;
       const skip = (pageNum - 1) * limitNum;
+      const includeAllFields = allFields === 'true';
 
       // Count total first
       const total = await this.prisma.category.count({ 
         where: { tenantId, isActive: true } 
       }).catch(() => 0);
 
-      const categories = await this.prisma.category.findMany({
+      // Select fields based on allFields parameter
+      const baseQuery: any = {
         where: { 
           tenantId,
           isActive: true // Only return active categories
         },
-        select: {
+        orderBy: { name: 'asc' },
+        skip,
+        take: limitNum,
+      };
+
+      if (includeAllFields) {
+        // Return all fields when allFields=true
+        const categories = await this.prisma.category.findMany(baseQuery);
+        const productCounts = await Promise.all(
+          categories.map(cat => 
+            this.prisma.productCategory.count({
+              where: { categoryId: cat.id }
+            })
+          )
+        );
+        
+        const mappedCategories = categories.map((c: any, index: number) => ({
+          ...c,
+          productCount: productCounts[index] || 0
+        }));
+        
+        return { 
+          categories: mappedCategories,
+          meta: {
+            total,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: Math.ceil(total / limitNum)
+          }
+        };
+      }
+
+      // Default: return selected fields only
+      baseQuery.select = {
           id: true,
           name: true,
           nameAr: true,
@@ -69,19 +105,24 @@ export class CategoryController {
           updatedAt: true,
           parentId: true,
           isActive: true,
+        icon: true,
+        sortOrder: true,
+        minQuantity: true,
+        maxQuantity: true,
+        enableSlider: true,
+        applySliderToAllProducts: true,
+        tenantId: true,
           _count: {
             select: { products: true }
           }
-        },
-        orderBy: { name: 'asc' },
-        skip,
-        take: limitNum,
-      });
+      };
+
+      const categories = await this.prisma.category.findMany(baseQuery);
       
       // Map to include productCount for frontend
       const mappedCategories = categories.map((c: any) => ({
         ...c,
-        productCount: c._count.products
+        productCount: c._count?.products || 0
       }));
       
       return { 
@@ -172,18 +213,34 @@ export class CategoryController {
     @Body() body: CreateCategoryDto,
   ) {
     const tenantId = this.ensureTenantId(req.tenantId);
-    const slug = body.slug || body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    let slug = body.slug || body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     
-    // Check if slug already exists for this tenant
-    const existingCategory = await this.prisma.category.findFirst({
-      where: {
-        tenantId: tenantId,
-        slug: slug,
-      },
-    });
+    // Ensure slug is unique within the same parent (subcategories under different parents can have same slug)
+    // If slug exists under the same parent, append a number to make it unique
+    const MAX_ATTEMPTS = 100;
+    let counter = 1;
+    let baseSlug = slug;
+    
+    while (counter <= MAX_ATTEMPTS) {
+      const existingCategory = await this.prisma.category.findFirst({
+        where: {
+          tenantId: tenantId,
+          slug: slug,
+          parentId: body.parentId || null, // Check uniqueness only within the same parent
+        },
+      });
 
-    if (existingCategory) {
-      throw new BadRequestException('Category with this slug already exists');
+      if (!existingCategory) {
+        break; // Slug is unique, exit loop
+      }
+
+      // Slug exists under the same parent, try with a suffix
+      slug = `${baseSlug}-${counter}`;
+      counter++;
+    }
+
+    if (counter > MAX_ATTEMPTS) {
+      throw new BadRequestException(`Unable to generate unique slug after ${MAX_ATTEMPTS} attempts. Please choose a different name.`);
     }
 
     // Validate parentId if provided
@@ -223,6 +280,47 @@ export class CategoryController {
         category 
       };
     } catch (error: any) {
+      // Handle unique constraint violation - try with incremented slug
+      if (error.code === 'P2002' && error.meta?.target?.includes('slug')) {
+        // Unique constraint failed, try again with incremented slug
+        counter = 1;
+        let retrySlug = `${baseSlug}-${counter}`;
+        
+        while (counter <= MAX_ATTEMPTS) {
+          try {
+            const category = await this.prisma.category.create({
+              data: {
+                name: body.name,
+                nameAr: body.nameAr,
+                description: body.description,
+                descriptionAr: body.descriptionAr,
+                slug: retrySlug,
+                tenantId: tenantId,
+                image: body.image,
+                icon: body.icon,
+                parentId: body.parentId || null,
+                isActive: body.isActive !== undefined ? body.isActive : true,
+                sortOrder: body.sortOrder || 0,
+              },
+            });
+            
+            return { 
+              message: 'Category created successfully',
+              category 
+            };
+          } catch (retryError: any) {
+            if (retryError.code === 'P2002' && retryError.meta?.target?.includes('slug')) {
+              counter++;
+              retrySlug = `${baseSlug}-${counter}`;
+              continue;
+            }
+            throw retryError;
+          }
+        }
+        
+        throw new BadRequestException(`Unable to create category: slug conflict persists after ${MAX_ATTEMPTS} attempts`);
+      }
+      
       // If some columns don't exist, try with minimal fields
       if (error.message?.includes('Unknown column') || error.code === 'P2009') {
         const category = await this.prisma.category.create({

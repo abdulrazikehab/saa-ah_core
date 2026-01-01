@@ -4,9 +4,11 @@ import { MasterAdminService } from './master-admin.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ApiKeyModule } from '../api-key/api-key.module';
 import { AdminApiKeyGuard } from '../guard/admin-api-key.guard';
+import { HttpModule } from '@nestjs/axios';
 
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
+import { TransactionModule } from '../transaction/transaction.module';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { JwtModule } from '@nestjs/jwt';
     ConfigModule,
     JwtModule.register({}),
     ApiKeyModule,
+    HttpModule,
+    TransactionModule,
   ],
   controllers: [MasterAdminController],
   providers: [MasterAdminService, AdminApiKeyGuard],

@@ -53,6 +53,7 @@ import { PartnerModule } from './partner/partner.module';
 import { MasterAdminModule } from './admin/master-admin.module';
 import { PublicModule } from './public/public.module';
 import { SupplierModule } from './supplier/supplier.module';
+import { EmailTemplatesModule } from './email-templates/email-templates.module';
 import { BrandModule } from './brand/brand.module';
 import { CurrencyModule } from './currency/currency.module';
 import { UnitModule } from './unit/unit.module';
@@ -62,6 +63,7 @@ import { MerchantModule } from './merchant/merchant.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { KycSettingsModule } from './kyc/kyc-settings.module';
 import { ApiKeyModule } from './api-key/api-key.module';
+import { PurchaseLimitsModule } from './purchase-limits/purchase-limits.module';
 
 @Module({
   // Main Application Module
@@ -127,6 +129,7 @@ import { ApiKeyModule } from './api-key/api-key.module';
     MasterAdminModule,
     PublicModule,
     SupplierModule,
+    EmailTemplatesModule,
     BrandModule,
     CurrencyModule,
     UnitModule,
@@ -136,6 +139,7 @@ import { ApiKeyModule } from './api-key/api-key.module';
     IntegrationsModule,
     KycSettingsModule,
     ApiKeyModule,
+    PurchaseLimitsModule,
   ],
   controllers: [AppController, AdminController],
   providers: [

@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CartService } from '../cart/cart.service';
 import { OrderService, CreateOrderDto } from '../order/order.service';
 import { FraudDetectionService } from '../fraud/fraud-detection.service';
+import { PurchaseLimitsService } from '../purchase-limits/purchase-limits.service';
 
 @Injectable()
 export class CheckoutService {
@@ -13,6 +14,7 @@ export class CheckoutService {
     private cartService: CartService,
     private orderService: OrderService,
     private fraudService: FraudDetectionService,
+    private limitsService: PurchaseLimitsService,
   ) {}
 
   async createOrderFromCart(
@@ -54,6 +56,57 @@ export class CheckoutService {
       throw new ForbiddenException(`Transaction blocked: ${fraudCheck.reason}`);
     }
 
+    // PURCHASE LIMIT CHECK
+    try {
+      // Get customer info if available
+      const customer = await this.prisma.customer.findFirst({
+        where: { tenantId, email: customerEmail },
+      });
+
+      // Check KYC status if customer exists
+      let isVerified = false;
+      let customerTierId: string | undefined;
+      
+      if (customer) {
+        // Check if customer has KYC verification (simplified - you may need to adjust based on your KYC model)
+        // Note: The KYC model might be in a different database, adjust accordingly
+        try {
+          const kyc = await this.prisma.kYC.findFirst({
+            where: { tenantId, userId: customer.id },
+          });
+          isVerified = kyc?.status === 'approved' || kyc?.emailVerified || false;
+        } catch (error) {
+          // If KYC model doesn't exist or is in different schema, treat as unverified
+          this.logger.debug('KYC check failed, treating customer as unverified');
+          isVerified = false;
+        }
+
+        // Get customer tier if available (you may need to adjust based on your tier model)
+        // For now, we'll skip tier checking, but you can add it based on your customer tier implementation
+      }
+
+      const limitCheck = await this.limitsService.checkPurchaseLimit(
+        tenantId,
+        customerEmail,
+        Number(cartTotal.total),
+        customerTierId,
+        isVerified,
+        // Credit card info would come from payment method - for now we skip it
+        // You may need to extract this from the payment data if available
+      );
+
+      if (!limitCheck.allowed) {
+        this.logger.warn(`Purchase limit exceeded for cart ${cartId}: ${limitCheck.reason}`);
+        throw new ForbiddenException(limitCheck.reason || 'Purchase amount exceeds the allowed limit');
+      }
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      // Log but don't block if limit check fails
+      this.logger.error(`Error checking purchase limits: ${error}`);
+    }
+
     // Create order data
     const orderData: CreateOrderDto = {
       customerEmail,
@@ -66,7 +119,26 @@ export class CheckoutService {
     };
 
     // Create the order
-    return this.orderService.createOrder(tenantId, cartId, orderData);
+    const order = await this.orderService.createOrder(tenantId, cartId, orderData);
+
+    // Record purchase for limits tracking (only after successful order creation)
+    // Note: This will be updated again when payment is confirmed
+    try {
+      await this.limitsService.recordPurchase(
+        tenantId,
+        customerEmail,
+        Number(cartTotal.total),
+        customerTierId,
+        isVerified,
+        // Credit card info would come from payment method - for now we skip it
+        // You may need to extract this from the payment data if available
+      );
+    } catch (error) {
+      // Log but don't fail the order if limit recording fails
+      this.logger.error(`Error recording purchase for limits: ${error}`);
+    }
+
+    return order;
   }
 
   async calculateShipping(tenantId: string, cartId: string, country: string, region?: string) {

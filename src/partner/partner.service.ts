@@ -78,11 +78,17 @@ export class PartnerService {
       }
     }
 
-    // Create standard pages if they don't exist
+    // List of default pages that should not be duplicated if they already exist in store defaults
+    // These are typically created by templates or store defaults
+    const defaultPageSlugs = ['about', 'contact', 'products'];
+    
+    // Create standard pages if they don't exist (excluding defaults to prevent duplicates)
+    // Exception: Always allow creating charge-wallet page even if other defaults exist
     const standardPages = [
       {
         title: 'About Us',
-        slug: 'about', // No leading slash
+        slug: 'about',
+        isDefault: true, // Mark as default to skip if already exists
         content: {
           sections: [
             {
@@ -108,7 +114,8 @@ export class PartnerService {
       },
       {
         title: 'Contact Us',
-        slug: 'contact', // No leading slash
+        slug: 'contact',
+        isDefault: true,
         content: {
           sections: [
             {
@@ -136,7 +143,8 @@ export class PartnerService {
       },
       {
         title: 'Products',
-        slug: 'products', // No leading slash
+        slug: 'products',
+        isDefault: true,
         content: {
           sections: [
             {
@@ -165,7 +173,24 @@ export class PartnerService {
       }
     ];
 
+    // Check which default pages already exist
+    const existingDefaultPages = await this.prisma.page.findMany({
+      where: { 
+        tenantId, 
+        slug: { in: defaultPageSlugs }
+      },
+      select: { slug: true }
+    });
+    const existingDefaultSlugs = new Set(existingDefaultPages.map(p => p.slug));
+
     for (const page of standardPages) {
+      // Skip default pages that already exist (to prevent duplicates)
+      // Exception: charge-wallet page should always be created
+      if (page.isDefault && existingDefaultSlugs.has(page.slug) && page.slug !== 'charge-wallet') {
+        console.log(`⏭️  Skipping duplicate default page: ${page.slug}`);
+        continue;
+      }
+
       const existingPage = await this.prisma.page.findFirst({
         where: { tenantId, slug: page.slug }
       });
@@ -180,6 +205,7 @@ export class PartnerService {
             isPublished: true
           }
         });
+        console.log(`✅ Created page: ${page.slug}`);
       }
     }
 

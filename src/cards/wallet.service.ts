@@ -3,6 +3,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserService } from '../user/user.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { Decimal } from '@prisma/client/runtime/library';
 
 @Injectable()
@@ -13,44 +14,50 @@ export class WalletService {
     private prisma: PrismaService,
     private userService: UserService,
     private httpService: HttpService,
+    private notificationsService: NotificationsService,
   ) {}
 
   // Get or create wallet for user
   async getOrCreateWallet(tenantId: string, userId: string, userData?: { email?: string; name?: string; role?: string }) {
-    // First, ensure user exists in core database
-    let user = await this.prisma.user.findUnique({ where: { id: userId } });
+    this.logger.log(`Getting or creating wallet for userId: ${userId}, tenantId: ${tenantId}, email: ${userData?.email}, role: ${userData?.role}`);
     
-    if (!user && userData?.email) {
-      this.logger.log(`User ${userId} not found in core database, syncing from auth...`);
-      try {
-        user = await this.userService.ensureUserExists(userId, {
-          email: userData.email,
-          name: userData.name,
-          role: userData.role || 'SHOP_OWNER',
-          tenantId: tenantId,
-        });
-      } catch (error) {
-        this.logger.error(`Failed to ensure user exists: ${error}`);
-        throw new NotFoundException(`User ${userId} not found. Please ensure user is synced from auth service.`);
-      }
-    } else if (!user) {
-      throw new NotFoundException(`User ${userId} not found. Please ensure user is synced from auth service.`);
+    // For customers, we MUST use the userId from the token (customer.id) directly
+    // Do NOT look up by email as that could cause multiple customers to share the same wallet
+    const isCustomer = userData?.role === 'CUSTOMER' || !userData?.role;
+    
+    // Ensure user exists in core database (sync from auth if needed)
+    const user = await this.userService.ensureUserExists(userId, {
+      email: userData?.email || `customer-${userId}@temp.local`,
+      name: userData?.name || 'Customer',
+      role: userData?.role || 'CUSTOMER',
+      tenantId: tenantId,
+    });
+    
+    if (!user) {
+      this.logger.error(`Failed to create or find user ${userId}`);
+      throw new NotFoundException(`User ${userId} not found and could not be created.`);
     }
 
+    const actualUserId = user.id;
+
+    // Look up wallet by the actual database userId
     let wallet = await this.prisma.wallet.findUnique({
-      where: { userId },
+      where: { userId: actualUserId },
     });
 
     if (!wallet) {
+      this.logger.log(`Wallet not found for userId ${actualUserId}, creating new wallet with balance 0`);
       wallet = await this.prisma.wallet.create({
         data: {
           tenantId,
-          userId,
+          userId: actualUserId,
           balance: 0,
           currency: 'SAR',
         },
       });
-      this.logger.log(`Created new wallet for user ${userId}`);
+      this.logger.log(`Created new wallet ${wallet.id} for user ${actualUserId} with balance 0`);
+    } else {
+      this.logger.log(`Found existing wallet ${wallet.id} for user ${actualUserId} with balance ${wallet.balance}`);
     }
 
     return wallet;
@@ -231,8 +238,15 @@ export class WalletService {
     },
     userData?: { email?: string; name?: string; role?: string },
   ) {
-    // Ensure wallet exists (and user exists)
-    await this.getOrCreateWallet(tenantId, userId, userData);
+    // Resolve user ID to ensure we're using the one in the core database
+    const user = await this.userService.ensureUserExists(userId, {
+      email: userData?.email || `customer-${userId}@temp.local`,
+      name: userData?.name || 'Customer',
+      role: userData?.role || 'CUSTOMER',
+      tenantId: tenantId,
+    });
+    
+    const actualUserId = user.id;
 
     // Validate bankId if provided
     let validBankId: string | undefined = undefined;
@@ -251,7 +265,7 @@ export class WalletService {
     const request = await this.prisma.walletTopUpRequest.create({
       data: {
         tenantId,
-        userId,
+        userId: actualUserId,
         amount: data.amount,
         currency: data.currency || 'SAR',
         paymentMethod: data.paymentMethod,
@@ -269,12 +283,11 @@ export class WalletService {
       },
     });
 
-    this.logger.log(`Created top-up request ${request.id} for user ${userId}`);
+    this.logger.log(`Created top-up request ${request.id} for user ${actualUserId}`);
 
     return request;
   }
 
-  // Get pending top-up requests for user
   async getTopUpRequests(userId: string, status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED') {
     const where: any = { userId };
     if (status) {
@@ -445,6 +458,29 @@ export class WalletService {
     });
 
     this.logger.log(`Rejected top-up request ${requestId}: ${reason}`);
+
+    // Create notification for the user about the rejection
+    try {
+      await this.notificationsService.create({
+        tenantId: request.tenantId,
+        userId: request.userId,
+        type: 'WALLET_TOPUP_REJECTED',
+        titleEn: 'Top-up Request Rejected',
+        titleAr: 'تم رفض طلب شحن الرصيد',
+        bodyEn: `Your top-up request of ${request.amount} ${request.currency} has been rejected. Reason: ${reason}`,
+        bodyAr: `تم رفض طلب شحن الرصيد بقيمة ${request.amount} ${request.currency}. السبب: ${reason}`,
+        data: {
+          requestId: requestId,
+          amount: Number(request.amount),
+          currency: request.currency,
+          rejectionReason: reason,
+        },
+      });
+      this.logger.log(`Notification created for rejected top-up request ${requestId}`);
+    } catch (error: any) {
+      // Log error but don't fail - rejection is already processed
+      this.logger.warn(`Failed to create notification for rejected top-up request ${requestId}:`, error?.message);
+    }
 
     // Call external API to reject top-up (non-blocking - for notification/audit purposes)
     const baseUrl = process.env.MERCHANT_API_URL;
@@ -628,21 +664,96 @@ export class WalletService {
       iban?: string;
       isDefault?: boolean;
     },
+    tenantId?: string,
+    userData?: { email?: string; name?: string; role?: string },
   ) {
+    // Validate required fields
+    if (!userId) {
+      throw new BadRequestException('User ID is required');
+    }
+
+    if (!data.bankName || !data.accountName || !data.accountNumber) {
+      throw new BadRequestException('Bank name, account name, and account number are required');
+    }
+
+    // Ensure user exists in core database (sync from auth if needed)
+    const user = await this.userService.ensureUserExists(userId, {
+      email: userData?.email || `customer-${userId}@temp.local`,
+      name: userData?.name || 'Customer',
+      role: userData?.role || 'CUSTOMER',
+      tenantId: tenantId || process.env.DEFAULT_TENANT_ID || 'default',
+    });
+    
+    if (!user) {
+      this.logger.error(`Failed to create or find user ${userId}`);
+      throw new NotFoundException(`User ${userId} not found and could not be created. Cannot create bank account without a valid user.`);
+    }
+
+    const actualUserId = user.id;
+
     // If this is set as default, unset other defaults first
     if (data.isDefault) {
       await this.prisma.bankAccount.updateMany({
-        where: { userId, isDefault: true },
+        where: { userId: actualUserId, isDefault: true },
         data: { isDefault: false },
       });
     }
 
-    return this.prisma.bankAccount.create({
-      data: {
-        userId,
-        ...data,
-      },
-    });
+    try {
+      return await this.prisma.bankAccount.create({
+        data: {
+          userId: actualUserId,
+          bankName: data.bankName,
+          bankCode: data.bankCode || null,
+          accountName: data.accountName,
+          accountNumber: data.accountNumber,
+          iban: data.iban || null,
+          isDefault: data.isDefault ?? false,
+        },
+      });
+    } catch (error: any) {
+      this.logger.error(`Error creating bank account for user ${userId}:`, error);
+      
+      // Check for unique constraint violations
+      if (error.code === 'P2002') {
+        throw new BadRequestException('A bank account with this information already exists');
+      }
+      
+      // Re-throw the original error if it's a known error type
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
+      }
+      
+      // For other errors, throw a generic error
+      throw new BadRequestException(`Failed to add bank account: ${error.message || 'Unknown error'}`);
+    }
+  }
+
+  // Delete user bank account
+  async deleteBankAccount(accountId: string) {
+    try {
+      const account = await this.prisma.bankAccount.findUnique({
+        where: { id: accountId },
+      });
+
+      if (!account) {
+        throw new NotFoundException('Bank account not found');
+      }
+
+      await this.prisma.bankAccount.delete({
+        where: { id: accountId },
+      });
+
+      return { success: true };
+    } catch (error: any) {
+      this.logger.error(`Error deleting bank account ${accountId}:`, error);
+      
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      
+      throw new BadRequestException(`Failed to delete bank account: ${error.message || 'Unknown error'}`);
+    }
   }
 }
 

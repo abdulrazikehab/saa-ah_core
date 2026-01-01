@@ -21,7 +21,7 @@ import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { TenantRequiredGuard } from '../../guard/tenant-required.guard';
 import { CreateEmployeeDto, UpdateEmployeeDto, EmployeeListQuery } from '../dto';
 
-@Controller('merchant/employees')
+@Controller('merchant/internal/employees')
 @UseGuards(JwtAuthGuard)
 export class EmployeeController {
   constructor(
@@ -49,7 +49,15 @@ export class EmployeeController {
       // Auto-create merchant if it doesn't exist
       let context;
       try {
-        context = await this.merchantService.validateMerchantAccess(userId, 'employeesManage');
+        // Check for employeesRead OR employeesManage permission
+        context = await this.merchantService.validateMerchantAccess(userId);
+        // If not owner, check if user has employeesRead or employeesManage
+        if (!context.isOwner) {
+          const permissions = context.permissions as any;
+          if (!permissions || (!permissions.employeesRead && !permissions.employeesManage)) {
+            throw new BadRequestException('Permission denied: employeesRead or employeesManage required');
+          }
+        }
       } catch (error: any) {
         // If merchant doesn't exist, create it automatically
         if (error.message?.includes('No merchant account')) {
@@ -58,7 +66,14 @@ export class EmployeeController {
             return []; // Return empty array if no tenant
           }
           await this.merchantService.getOrCreateMerchant(tenantId, userId);
-          context = await this.merchantService.validateMerchantAccess(userId, 'employeesManage');
+          context = await this.merchantService.validateMerchantAccess(userId);
+          // Check permissions again after creating merchant
+          if (!context.isOwner) {
+            const permissions = context.permissions as any;
+            if (!permissions || (!permissions.employeesRead && !permissions.employeesManage)) {
+              return []; // Return empty array if no permission
+            }
+          }
         } else {
           return []; // Return empty array for other errors
         }
@@ -107,19 +122,47 @@ export class EmployeeController {
       throw new BadRequestException('Password is required and must be at least 6 characters');
     }
     
-    // Provide default permissions if not provided
-    if (!dto.permissions || typeof dto.permissions !== 'object') {
-      dto.permissions = {
-        ordersCreate: false,
-        ordersRead: false,
-        reportsRead: false,
-        walletRead: false,
-        playersWrite: false,
-        employeesManage: false,
-        settingsWrite: false,
-        invoicesRead: false,
-      };
-    }
+      // Provide default permissions if not provided - all permissions default to false
+      if (!dto.permissions || typeof dto.permissions !== 'object') {
+        dto.permissions = {
+          ordersCreate: false,
+          ordersRead: false,
+          ordersUpdate: false,
+          ordersDelete: false,
+          reportsRead: false,
+          walletRead: false,
+          walletRecharge: false,
+          playersWrite: false,
+          playersRead: false,
+          employeesManage: false,
+          employeesRead: false,
+          settingsWrite: false,
+          settingsRead: false,
+          invoicesRead: false,
+          productsRead: false,
+          productsWrite: false,
+        };
+      } else {
+        // Normalize permissions - ensure all fields are boolean
+        dto.permissions = {
+          ordersCreate: dto.permissions.ordersCreate ?? false,
+          ordersRead: dto.permissions.ordersRead ?? false,
+          ordersUpdate: dto.permissions.ordersUpdate ?? false,
+          ordersDelete: dto.permissions.ordersDelete ?? false,
+          reportsRead: dto.permissions.reportsRead ?? false,
+          walletRead: dto.permissions.walletRead ?? false,
+          walletRecharge: dto.permissions.walletRecharge ?? false,
+          playersWrite: dto.permissions.playersWrite ?? false,
+          playersRead: dto.permissions.playersRead ?? false,
+          employeesManage: dto.permissions.employeesManage ?? false,
+          employeesRead: dto.permissions.employeesRead ?? false,
+          settingsWrite: dto.permissions.settingsWrite ?? false,
+          settingsRead: dto.permissions.settingsRead ?? false,
+          invoicesRead: dto.permissions.invoicesRead ?? false,
+          productsRead: dto.permissions.productsRead ?? false,
+          productsWrite: dto.permissions.productsWrite ?? false,
+        };
+      }
     
     const userId = req.user?.id || req.user?.userId;
     if (!userId) {
@@ -174,7 +217,15 @@ export class EmployeeController {
     @Param('id') id: string,
   ) {
     const userId = req.user.id || req.user.userId;
-    const context = await this.merchantService.validateMerchantAccess(userId, 'employeesManage');
+    const context = await this.merchantService.validateMerchantAccess(userId);
+    
+    // Check for employeesRead OR employeesManage permission (or isOwner)
+    if (!context.isOwner) {
+      const permissions = context.permissions as any;
+      if (!permissions || (!permissions.employeesRead && !permissions.employeesManage)) {
+        throw new BadRequestException('Permission denied: employeesRead or employeesManage required');
+      }
+    }
 
     return this.employeeService.findOne(context.merchantId, id);
   }
@@ -186,7 +237,38 @@ export class EmployeeController {
     @Body() dto: UpdateEmployeeDto,
   ) {
     const userId = req.user.id || req.user.userId;
-    const context = await this.merchantService.validateMerchantAccess(userId, 'employeesManage');
+    const context = await this.merchantService.validateMerchantAccess(userId);
+    
+    // Check for employeesManage permission (or isOwner)
+    if (!context.isOwner) {
+      const permissions = context.permissions as any;
+      if (!permissions || !permissions.employeesManage) {
+        throw new BadRequestException('Permission denied: employeesManage required');
+      }
+    }
+
+    // Normalize permissions - ensure all fields are boolean and default to false if not provided
+    if (dto.permissions) {
+      const normalizedPermissions: any = {
+        ordersCreate: dto.permissions.ordersCreate ?? false,
+        ordersRead: dto.permissions.ordersRead ?? false,
+        ordersUpdate: dto.permissions.ordersUpdate ?? false,
+        ordersDelete: dto.permissions.ordersDelete ?? false,
+        reportsRead: dto.permissions.reportsRead ?? false,
+        walletRead: dto.permissions.walletRead ?? false,
+        walletRecharge: dto.permissions.walletRecharge ?? false,
+        playersWrite: dto.permissions.playersWrite ?? false,
+        playersRead: dto.permissions.playersRead ?? false,
+        employeesManage: dto.permissions.employeesManage ?? false,
+        employeesRead: dto.permissions.employeesRead ?? false,
+        settingsWrite: dto.permissions.settingsWrite ?? false,
+        settingsRead: dto.permissions.settingsRead ?? false,
+        invoicesRead: dto.permissions.invoicesRead ?? false,
+        productsRead: dto.permissions.productsRead ?? false,
+        productsWrite: dto.permissions.productsWrite ?? false,
+      };
+      dto.permissions = normalizedPermissions;
+    }
 
     const employee = await this.employeeService.update(context.merchantId, id, dto);
 
@@ -210,7 +292,15 @@ export class EmployeeController {
     @Param('id') id: string,
   ) {
     const userId = req.user.id || req.user.userId;
-    const context = await this.merchantService.validateMerchantAccess(userId, 'employeesManage');
+    const context = await this.merchantService.validateMerchantAccess(userId);
+    
+    // Check for employeesManage permission (or isOwner)
+    if (!context.isOwner) {
+      const permissions = context.permissions as any;
+      if (!permissions || !permissions.employeesManage) {
+        throw new BadRequestException('Permission denied: employeesManage required');
+      }
+    }
 
     await this.auditService.log(
       context.merchantId,

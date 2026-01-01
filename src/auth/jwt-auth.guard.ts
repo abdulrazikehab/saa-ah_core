@@ -56,11 +56,16 @@ export class JwtAuthGuard implements CanActivate {
           const secret = this.configService.get<string>('JWT_SECRET');
           if (secret) {
             const payload = this.jwtService.verify(token, { secret });
+            // For customer tokens, the 'sub' field contains the customer.id
+            // For regular users, 'sub' contains the user.id
             request.user = {
-              id: payload.sub,
+              id: payload.sub, // This is the customer.id for customers, user.id for regular users
+              userId: payload.sub, // Alias for compatibility
               tenantId: payload.tenantId || null,
-              role: payload.role,
-              email: payload.email
+              role: payload.role || (payload.type === 'customer' ? 'CUSTOMER' : null),
+              email: payload.email,
+              firstName: payload.firstName,
+              lastName: payload.lastName,
             };
             request.tenantId = payload.tenantId || null;
           }
@@ -104,13 +109,22 @@ export class JwtAuthGuard implements CanActivate {
       
       // Allow users without tenantId (for tenant setup flow)
       // The tenantId will be null for newly registered users who haven't set up their tenant yet
+      // For customer tokens, payload.sub contains customer.id (unique per customer)
+      // For regular users, payload.sub contains user.id
       request.user = {
-        id: payload.sub,
+        id: payload.sub, // This is customer.id for customers, user.id for regular users
+        userId: payload.sub, // Alias for compatibility
         tenantId: effectiveTenantId,
-        role: payload.role,
-        email: payload.email
+        role: payload.role || (payload.type === 'customer' ? 'CUSTOMER' : null),
+        type: payload.type, // Include type field for customer tokens
+        email: payload.email,
+        firstName: payload.firstName,
+        lastName: payload.lastName,
       };
       request.tenantId = effectiveTenantId;
+      
+      // Log for debugging
+      this.logger.debug(`JWT Guard: Set user.tenantId=${effectiveTenantId}, user.role=${request.user.role}, user.email=${request.user.email}`);
       
       // Log warning if tenantId is missing for authenticated user (helps debug 401/500 errors)
       if (!effectiveTenantId && payload.role !== 'SUPER_ADMIN') {

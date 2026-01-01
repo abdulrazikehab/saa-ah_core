@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantSyncService } from '../tenant/tenant-sync.service';
 
@@ -45,12 +45,40 @@ export class PageService {
     throw new Error(`Unable to generate unique slug after ${MAX_ATTEMPTS} attempts. Please choose a different base slug.`);
   }
 
-  async create(tenantId: string, data: any) {
+  async create(tenantId: string, data: any, subdomain?: string) {
     try {
-      // Check if tenant exists before creating page
-      const tenantExists = await this.tenantSyncService.ensureTenantExists(tenantId);
-      if (!tenantExists) {
-        throw new ForbiddenException(`Cannot create page: Tenant ${tenantId} does not exist. Please set up your market first.`);
+      // Check if tenant exists in database first
+      let tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+      });
+      
+      // If tenant doesn't exist, try to create it
+      if (!tenant) {
+        // Use provided subdomain or generate a temporary one based on tenantId
+        const tenantSubdomain = subdomain || `tenant-${tenantId.substring(0, 8).toLowerCase()}`;
+        const tenantExists = await this.tenantSyncService.ensureTenantExists(tenantId, {
+          subdomain: tenantSubdomain,
+          name: `Tenant-${tenantId.substring(0, 8)}`,
+        });
+        if (tenantExists) {
+          tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+          });
+        }
+      }
+      
+      // If tenant still doesn't exist, check one more time (might have been created concurrently)
+      if (!tenant) {
+        tenant = await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+        });
+      }
+      
+      // If tenant still doesn't exist, we cannot create the page (foreign key constraint)
+      // But we've already tried to create it, so this is unexpected
+      if (!tenant) {
+        console.error(`❌ Tenant ${tenantId} does not exist and could not be created. Cannot create page due to foreign key constraint.`);
+        throw new ForbiddenException(`Cannot create page: Tenant ${tenantId} does not exist in the database. Please ensure your market is properly set up.`);
       }
 
       // Validate and set title - required field

@@ -79,13 +79,16 @@ export class MerchantOrderService {
     for (const item of cart.items) {
       const product = item.product;
 
-      if (!product.isActive || !product.isAvailable) {
+      if (!product.isAvailable) {
         throw new BadRequestException(`Product ${product.name} is not available`);
       }
 
-      if (item.quantity < product.minQuantity || item.quantity > product.maxQuantity) {
+      const minQty = product.min || 1;
+      const maxQty = product.max || 1000;
+
+      if (item.quantity < minQty || item.quantity > maxQty) {
         throw new BadRequestException(
-          `Quantity for ${product.name} must be between ${product.minQuantity} and ${product.maxQuantity}`,
+          `Quantity for ${product.name} must be between ${minQty} and ${maxQty}`,
         );
       }
 
@@ -93,12 +96,14 @@ export class MerchantOrderService {
         throw new BadRequestException(`Only ${product.stockCount} available for ${product.name}`);
       }
 
-      const unitPrice = new Decimal(product.wholesalePrice);
-      const unitCost = new Decimal(product.wholesalePrice).times(0.85); // Example cost calculation
+      const unitPrice = new Decimal(product.costPerItem || product.price);
+      const unitCost = new Decimal(product.costPerItem || product.price).times(0.85); // Example cost calculation
       const lineSubtotal = unitPrice.times(item.quantity);
-      const lineTax = lineSubtotal.times(product.taxRate);
+      const taxRate = 0.15;
+      const lineTax = lineSubtotal.times(taxRate);
       const lineTotal = lineSubtotal.plus(lineTax);
       const lineProfit = lineSubtotal.minus(unitCost.times(item.quantity));
+
 
       subtotal = subtotal.plus(lineSubtotal);
       taxTotal = taxTotal.plus(lineTax);
@@ -497,11 +502,11 @@ export class MerchantOrderService {
     for (const item of original.items) {
       const product = await this.cardProductService.findOne(tenantId, item.productId);
 
-      if (!product.isActive || !product.isAvailable) {
+      if (!product.isAvailable) {
         throw new BadRequestException(`Product ${product.name} is no longer available`);
       }
 
-      if (product.stockCount < item.quantity) {
+      if (product.availableStock < item.quantity) {
         throw new BadRequestException(`Insufficient stock for ${product.name}`);
       }
 
@@ -510,9 +515,11 @@ export class MerchantOrderService {
         : new Decimal(item.unitPrice);
       const unitCost = new Decimal(product.wholesalePrice).times(0.85);
       const lineSubtotal = unitPrice.times(item.quantity);
-      const lineTax = lineSubtotal.times(product.taxRate);
+      const taxRate = 0.15;
+      const lineTax = lineSubtotal.times(taxRate);
       const lineTotal = lineSubtotal.plus(lineTax);
       const lineProfit = lineSubtotal.minus(unitCost.times(item.quantity));
+
 
       subtotal = subtotal.plus(lineSubtotal);
       taxTotal = taxTotal.plus(lineTax);

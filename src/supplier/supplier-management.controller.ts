@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request, BadRequestException, Logger } from '@nestjs/common';
 import { SupplierService, CreateSupplierDto, UpdateSupplierDto } from './supplier.service';
+import { SupplierStatisticsService } from './supplier-statistics.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthenticatedRequest } from '../types/request.types';
 
@@ -8,7 +9,10 @@ import { AuthenticatedRequest } from '../types/request.types';
 export class SupplierManagementController {
   private readonly logger = new Logger(SupplierManagementController.name);
 
-  constructor(private readonly supplierService: SupplierService) {}
+  constructor(
+    private readonly supplierService: SupplierService,
+    private readonly statisticsService: SupplierStatisticsService,
+  ) {}
 
   @Post()
   async create(@Request() req: AuthenticatedRequest, @Body() data: CreateSupplierDto) {
@@ -182,6 +186,38 @@ export class SupplierManagementController {
     }
     
     return this.supplierService.getSupplierProductDetails(tenantId, id, productId);
+  }
+
+  @Get(':id/statistics')
+  async getStatistics(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
+    return this.statisticsService.getSupplierStatistics(tenantId, id);
+  }
+
+  @Get('statistics/all')
+  async getAllStatistics(@Request() req: AuthenticatedRequest) {
+    if (!req.user) {
+      throw new BadRequestException('Authentication required. Please log in.');
+    }
+    
+    const tenantId = req.user.tenantId || req.tenantId;
+    if (!tenantId || tenantId === 'default' || tenantId === 'system') {
+      throw new BadRequestException(
+        'You must set up a market first. Please go to Market Setup to create your store, then log out and log back in to refresh your session.'
+      );
+    }
+    
+    return this.statisticsService.getAllSuppliersStatistics(tenantId);
   }
 }
 
